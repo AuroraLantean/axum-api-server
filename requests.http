@@ -1,0 +1,19 @@
+### Test remote
+GET 142.93.217.249:3000/ic/test
+
+### root
+GET http://localhost:3000
+
+### get_user_by_id
+GET http://localhost:3000/user/100
+
+### get_user_by_id_post
+POST http://localhost:3000/user/details
+content-type: application/json
+
+{
+  "user_id": 1
+}
+
+### Get Google
+GET www.google.com 
