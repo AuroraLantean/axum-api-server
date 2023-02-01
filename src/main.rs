@@ -1,16 +1,25 @@
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    response::{Html, IntoResponse},
+    body,
+    extract::{Path, Query, State},
+    headers::UserAgent,
+    http::{request, HeaderMap, Method, Request, StatusCode},
+    middleware::{self, Next},
+    response::{Html, IntoResponse, Response},
     routing::{get, post},
-    Json, Router,
+    Extension, Json, Router, TypedHeader,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{MySql, MySqlPool};
 use std::net::SocketAddr;
+use tower_http::cors::{Any, CorsLayer};
 
 mod database;
 use database::*;
+mod todos;
+use todos::*;
+//use root_package_name::run;
+//mod route_abc;//import from src/routes/route_abc.rs
+//use route_abc::*;
 
 #[tokio::main]
 async fn main() {
@@ -21,20 +30,43 @@ async fn main() {
         .await
         .expect("failed to connect to database");
 
-    // build our application with a route
+    //to intercept incoming calls from untrusted brower origins
+    let cors = CorsLayer::new()
+        // allow `GET` and `POST` when accessing the resource
+        .allow_methods([Method::GET, Method::POST])
+        // allow requests from any origin
+        .allow_origin(Any);
+    // confirm active by seeing access-control-allow-origin from response headers
+
+    let config = Config {
+        mode: "normal".to_owned(),
+    };
+    // Extension(config) MUST be below any routes to make config available to them
+    //set_custom_middleware will run only before what is above it! So
     let app = Router::new()
-        // `GET /` goes to `root`
+        .route("/get_custom_middleware", get(get_custom_middleware))
+        .route_layer(middleware::from_fn(set_custom_middleware))
         .route("/", get(root))
+        .route("/hello", get(hello))
         .route("/html", get(send_html))
+        .route("/get_body_string", post(get_body_string))
         .route("/user/:id", get(get_user_by_id))
-        .route("/user/details", post(get_user_by_id_post))
+        .route("/user/092", get(exactmatch))
+        .route("/query_params", get(query_params))
+        .route("/query_headers", get(query_headers))
+        .route("/query_custom_headers", get(query_custom_headers))
+        .route("/get_config", get(get_config))
+        .route("/user/struct_input_output", post(struct_input_output))
+        .route("/todos/all", get(Todo::get_all_todos))
+        .route("/todo/create", post(Todo::create_a_todo))
         // `POST /users` goes to `create_user`
         .route("/users", post(create_user))
+        .layer(Extension(config))
+        .layer(cors)
         .with_state(db);
 
-    // run our app with hyper
     // `axum::Server` is a re-export of `hyper::Server`
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 3000)); // 0.0.0.0 is compatible for docker containers and VM
     tracing::debug!("listening on {}", addr);
     println!("Server running on localhost:3000");
     axum::Server::bind(&addr)
@@ -45,27 +77,104 @@ async fn main() {
 
 // basic handler that responds with a static string
 async fn root(State(_db): State<MySqlPool>) -> &'static str {
+    "root"
+}
+async fn hello(State(_db): State<MySqlPool>) -> &'static str {
     "Hello, World!"
 }
 async fn send_html() -> Html<&'static str> {
     Html("<h1>Hello, World!</h1>")
 }
+//curl -X POST 127.0.0.1:3000/get_body_string
+async fn get_body_string(body: String) -> String {
+    body
+}
+// exactmatch must not take "Path" as argument bcos it is exact match already!
+async fn exactmatch() -> impl IntoResponse {
+    Json(User {
+        username: "exactmatch will take priority".to_owned(),
+        user_id: 092,
+    })
+}
+#[derive(Serialize, Deserialize, Debug)]
+struct QueryParams {
+    user_id: u64,
+    code: String,
+}
+async fn query_params(Query(query): Query<QueryParams>) -> impl IntoResponse {
+    Json(query)
+}
 
+// needs "headers" feature from axum
+async fn query_headers(TypedHeader(user_agent): TypedHeader<UserAgent>) -> String {
+    user_agent.to_string()
+}
+// needs "headers" feature from axum
+async fn query_custom_headers(headers: HeaderMap) -> String {
+    let auth = headers.get("Authorization").unwrap(); //can be used for "User-Agent"
+    auth.to_str().unwrap().to_owned()
+}
+
+// get_config
+#[derive(Clone)]
+pub struct Config {
+    pub mode: String,
+}
+async fn get_config(Extension(config): Extension<Config>) -> String {
+    config.mode
+}
+
+#[derive(Clone)]
+pub struct SecurityLevel(pub String);
+async fn get_custom_middleware(Extension(security_level): Extension<SecurityLevel>) -> String {
+    security_level.0
+}
+
+async fn set_custom_middleware<B>(
+    mut request: Request<B>,
+    next: Next<B>,
+) -> Result<Response, StatusCode> {
+    let headers = request.headers();
+    let security_level = headers
+        .get("security-level")
+        .ok_or_else(|| StatusCode::BAD_REQUEST)?;
+    let security_level = security_level
+        .to_str()
+        .map_err(|_error| StatusCode::BAD_REQUEST)?
+        .to_owned();
+    let extensions = request.extensions_mut();
+    extensions.insert(SecurityLevel(security_level));
+    Ok(next.run(request).await)
+}
+
+//CORS https://docs.rs/tower-http/latest/tower_http/cors/index.html
+
+//curl -X POST 127.0.0.1:3000
+async fn struct_input_output(Json(body): Json<User>) -> impl IntoResponse {
+    dbg!(&body);
+    Json(User {
+        user_id: body.user_id,
+        username: body.username,
+    })
+}
+// Serialize for output body
+#[derive(Serialize, Deserialize, Debug)]
+struct User {
+    user_id: u64,
+    username: String,
+}
 //curl localhost:3000/user/9
 async fn get_user_by_id(Path(user_id): Path<u64>) -> impl IntoResponse {
     Json(User {
         username: "get_user_by_id".to_owned(),
-        id: user_id,
+        user_id,
     })
 }
-//curl -X POST 127.0.0.1:3000
-async fn get_user_by_id_post(Json(user): Json<UserId>) -> impl IntoResponse {
-    Json(User {
-        username: "get_user_by_id_post".to_owned(),
-        id: user.user_id,
-    })
+// Deserialize for input body, Debug for terminal print
+#[derive(Deserialize, Debug)]
+struct CreateUser {
+    username: String,
 }
-
 async fn create_user(
     // this argument tells axum to parse the request body
     // as JSON into a `CreateUser` type
@@ -73,7 +182,7 @@ async fn create_user(
 ) -> impl IntoResponse {
     // insert your application logic here
     let user = User {
-        id: 1337,
+        user_id: 1337,
         username: payload.username,
     };
 
@@ -82,22 +191,6 @@ async fn create_user(
     (StatusCode::CREATED, Json(user))
 }
 
-// the input to our `create_user` handler
-#[derive(Deserialize)]
-struct CreateUser {
-    username: String,
-}
-#[derive(Deserialize)]
-struct UserId {
-    user_id: u64,
-}
-
-// the output to our `create_user` handler
-#[derive(Serialize)]
-struct User {
-    id: u64,
-    username: String,
-}
 /*
 //! API will be:
 //!

@@ -1,18 +1,83 @@
+### all post json has NO TRAILING "," !!!
+### https://github.com/Huachao/vscode-restclient
+
 ### Test remote
 GET 142.93.217.249:3000/ic/test
 
 ### root
 GET http://localhost:3000
 
+### hello
+GET http://localhost:3000/hello
+
 ### get_user_by_id
 GET http://localhost:3000/user/100
+### exactmatch
+GET http://localhost:3000/user/092
+### query_params
+GET http://localhost:3000/query_params?code=hello world&user_id=155
 
-### get_user_by_id_post
-POST http://localhost:3000/user/details
+### query_headers: after the request line to first empty line
+GET http://localhost:3000/query_headers
+User-Agent: rest-client
+Accept: */*
+Accept-Language: en-GB,en-US;q=0.8,en;q=0.6,zh-CN;q=0.4
+Content-Type: application/json
+
+### query_custom_headers
+GET http://localhost:3000/query_custom_headers
+User-Agent: rest-client
+Accept: */*
+Accept-Language: en-GB,en-US;q=0.8,en;q=0.6,zh-CN;q=0.4
+Content-Type: application/json
+alg: HS256
+typ: JWT
+Authorization: Bearer vwig.3435u2ng.lv6iria
+
+### get_config
+GET http://localhost:3000/get_config
+
+### get_custom_middleware
+GET http://localhost:3000/get_custom_middleware
+User-Agent: rest-client
+Accept: */*
+security-level: "abc security 9"
+
+### set_custom_middleware
+GET http://localhost:3000/set_custom_middleware
+User-Agent: rest-client
+Accept: */*
+security-level: "xyz"
+
+
+
+### get_body_string
+POST http://localhost:3000/get_body_string
 content-type: application/json
 
 {
-  "user_id": 1
+  "get_body_string hello"
+}
+
+### struct_input_output
+POST http://localhost:3000/user/struct_input_output
+content-type: application/json
+
+{
+  "user_id": 1,
+  "username": "John Doe"
+}
+
+### get all todos
+GET http://localhost:3000/todos/all
+
+### create a todo
+POST http://localhost:3000/todo/create
+content-type: application/json
+
+{
+  "title": "title one",
+  "description": "description one"
 }
 
 ### Get Google
