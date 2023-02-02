@@ -7,7 +7,7 @@ pub struct CreateTodo {
     title: String,
     description: Option<String>,
 }
-
+// TODO
 #[derive(Serialize, Deserialize, FromRow)]
 pub struct Todo {
     id: i32,
