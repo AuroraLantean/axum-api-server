@@ -54,47 +54,33 @@ content-type: application/json
   "get_body_string hello"
 }
 
-### add_user_successlly
-POST http://localhost:3000/add_user_successlly
-content-type: application/json
-
-{
-  "user_id": 1,
-  "username": "John Doe"
-}
-
-### struct_input_output
-POST http://localhost:3000/user/struct_input_output
-content-type: application/json
-
-{
-  "user_id": 1,
-  "username": "John Doe"
-}
-
 ### validate_struct_input
 POST http://localhost:3000/validate_struct_input
 content-type: application/json
 
 {
   "username": "John Doe",
-  "password": "12345",
-  "nickname": ""
+  "password": "12345678",
+  "email": "abc@domain.com"
 }
-### validate_struct_input
+### validate_struct_input: fail in password length
 POST http://localhost:3000/validate_struct_input
 content-type: application/json
 
 {
   "username": "John Doe",
-  "password": "12345"
+  "password": "1234567",
+  "email": "abc"
 }
-### validate_struct_input
-POST http://localhost:3000/validate_struct_input
+
+### create_task
+POST http://localhost:3000/create_task
 content-type: application/json
 
 {
-  "username": "John Doe"
+  "title": "title one",
+  "priority": "AA",
+  "description": "description one"
 }
 
 ### get all todos

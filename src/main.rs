@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 
 mod routes;
 use routes::create_routes;
+mod entities; //load up all db entity files
 
 #[tokio::main]
 async fn main() {

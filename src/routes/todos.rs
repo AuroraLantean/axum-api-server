@@ -1,6 +1,6 @@
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, MySqlPool};
+/*use sqlx::{FromRow, MySqlPool};
 
 #[derive(Serialize, Deserialize, FromRow)]
 pub struct CreateTodo {
@@ -59,3 +59,4 @@ impl Todo {
         }
     }
 }
+*/

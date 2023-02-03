@@ -6,18 +6,23 @@ use axum::{
     Extension,
     Router,
 };
-use tower_http::cors::{Any, CorsLayer};
-mod route_func;
+use dotenvy::dotenv;
 use route_func::*;
-mod todos;
-use todos::*;
+use tower_http::cors::{Any, CorsLayer};
+
+mod route_func;
+
+//mod todos;//MySQL
+//use todos::*;//MySQL
 mod database;
 use database::*;
 
 pub async fn create_routes() -> Router {
-    let db = database_connection()
-        .await
-        .expect("failed to connect to database");
+    dotenv().ok();
+    let db_postgres_uri = dotenvy::var("DB_POSTGRES_URL").unwrap();
+    //let db_postgres_uri = dotenv!("DB_POSTGRES_URL");
+    let db_conn = connect_db(db_postgres_uri.as_str()).await.unwrap();
+    //.expect("failed to connect to database");
 
     //to intercept incoming calls from untrusted brower origins
     let cors = CorsLayer::new()
@@ -30,7 +35,7 @@ pub async fn create_routes() -> Router {
     let config = Config {
         mode: "normal".to_owned(),
     };
-    // Extension(config) MUST be below any routes to make config available to them
+    // Extension(config), Extension(db_conn) MUST be below any routes to make data available to them
     //place get_custom_middleware route to 1st route, and set_custom_middleware as 2nd route, so set_custom_middleware will only run before get_custom_middleware(the route above it)!!!
     Router::new()
         .route("/get_custom_middleware", get(get_custom_middleware))
@@ -46,13 +51,13 @@ pub async fn create_routes() -> Router {
         .route("/query_custom_headers", get(query_custom_headers))
         .route("/get_config", get(get_config))
         .route("/always_errors", get(always_errors))
-        .route("/add_user_successlly", post(add_user_successlly))
         .route("/validate_struct_input", post(validate_struct_input))
-        .route("/user/struct_input_output", post(struct_input_output))
-        .route("/todos/all", get(Todo::get_all_todos))
-        .route("/todo/create", post(Todo::create_a_todo))
+        .route("/create_task", post(create_task))
+        //.route("/todos/all", get(Todo::get_all_todos))
+        //.route("/todo/create", post(Todo::create_a_todo))
         .route("/users", post(create_user))
         .layer(Extension(config))
         .layer(cors)
-        .with_state(db)
+        .layer(Extension(db_conn))
+    //.with_state(db)
 }

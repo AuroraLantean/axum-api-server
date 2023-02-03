@@ -9,6 +9,32 @@ Using actix-web adds complications because it is using its own actix-rt runtime.
 
 `cargo install cargo-watch`
 
+## Implement .env file from env.template
+
+```
+DATABASE_URL_EXAMPLE=protocol://username:password@host/database
+DB_MYSQL_URL=
+DB_POSTGRES_URL=
+```
+
+## Start Database
+
+```
+docker compose up -d --wait
+
+docker compose logs database
+```
+
+## Generate Sea-orm entities
+
+https://www.sea-ql.org/SeaORM/docs/generate-entity/sea-orm-cli/
+[Note] Generate entity files if you change your database structure!
+
+```
+cargo install sea-orm-cli
+sea-orm-cli generate entity -o src/entities -u YOUR_DATABASE_URI -o entity/src
+```
+
 ## To Run in development mode
 
 ```bash

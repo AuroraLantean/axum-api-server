@@ -1,20 +1,32 @@
 use axum::{
-    extract::{Path, Query, State},
+    async_trait,
+    body::HttpBody,
+    extract::{FromRequest, Path, Query, State},
     headers::UserAgent,
-    http::{HeaderMap, Request, StatusCode},
+    http::{self, HeaderMap, Request, StatusCode},
     middleware::Next,
     response::Response,
     response::{Html, IntoResponse},
-    Extension, Json, TypedHeader,
+    BoxError, Extension, Json, RequestExt, TypedHeader,
 };
+use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
 use serde::{Deserialize, Serialize};
-use sqlx::MySqlPool;
+use validator::Validate;
 
+use crate::entities::tasks;
+
+/*use sqlx::MySqlPool;
 // basic handler that responds with a static string
 pub async fn root(State(_db): State<MySqlPool>) -> &'static str {
     "root"
 }
 pub async fn hello(State(_db): State<MySqlPool>) -> &'static str {
+    "Hello, World!"
+}*/
+pub async fn root() -> &'static str {
+    "root"
+}
+pub async fn hello() -> &'static str {
     "Hello, World!"
 }
 pub async fn send_html() -> Html<&'static str> {
@@ -97,20 +109,61 @@ pub async fn set_custom_middleware<B>(
 //5xx: errors from the server
 
 //201 means success at created item
-pub async fn add_user_successlly() -> Response {
-    (StatusCode::CREATED, "new user added".to_owned()).into_response()
-}
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Validate)]
 pub struct AddUser {
-    username: String,
-    password: String,
-    nickname: Option<String>,
+    pub username: String,
+    #[validate(length(min = 8, message = "must have at least 8 characters"))]
+    pub password: String,
+    #[validate(email(message = "must be a valid email"))]
+    pub email: String,
+    pub nickname: Option<String>,
 } //Option field in input struct
-pub async fn validate_struct_input(Json(body): Json<AddUser>) -> impl IntoResponse {
+  //https://github.com/Keats/validator
+
+//Custom Extractor to validate struct input
+//https://docs.rs/axum/latest/axum/extract/trait.FromRequest.html
+#[async_trait]
+impl<S, B> FromRequest<S, B> for AddUser
+where
+    B: HttpBody + Send + 'static,
+    B::Data: Send,
+    B::Error: Into<BoxError>,
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, String);
+
+    async fn from_request(request: Request<B>, _state: &S) -> Result<Self, Self::Rejection> {
+        let Json(user) = request
+            .extract::<Json<AddUser>, _>()
+            .await
+            .map_err(|error| (StatusCode::BAD_REQUEST, format!("{}", error)))?;
+
+        if let Err(errors) = user.validate() {
+            return Err((StatusCode::BAD_REQUEST, format!("{}", errors)));
+        }
+        Ok(user)
+    }
+}
+#[derive(Serialize)]
+pub struct Output<'a> {
+    error_code: u32,
+    message: &'a str,
+}
+pub async fn validate_struct_input(body: AddUser) -> impl IntoResponse {
+    dbg!(body);
+    Json(Output {
+        error_code: 0,
+        message: "ok",
+    })
+}
+/*pub async fn validate_struct_input(Json(body): Json<AddUser>) -> impl IntoResponse {
     dbg!(&body);
     (StatusCode::CREATED, "new user added".to_owned()).into_response()
 }
+-> Response {
+    (StatusCode::CREATED, "new user added".to_owned()).into_response()}
+*/
 
 // Serialize for output body
 #[derive(Serialize, Deserialize, Debug)]
@@ -126,16 +179,31 @@ pub async fn get_user_by_id(Path(user_id): Path<u64>) -> impl IntoResponse {
     })
 }
 
-//curl -X POST 127.0.0.1:3000
-pub async fn struct_input_output(Json(body): Json<User>) -> impl IntoResponse {
-    dbg!(&body);
-    Json(User {
-        user_id: body.user_id,
-        username: body.username,
+// Deserialize for input body, Debug for terminal print
+#[derive(Deserialize, Debug)]
+pub struct CreateTask {
+    pub title: String,
+    pub priority: Option<String>,
+    pub description: Option<String>,
+}
+pub async fn create_task(
+    Extension(db_conn): Extension<DatabaseConnection>,
+    Json(payload): Json<CreateTask>,
+) -> impl IntoResponse {
+    let new_task = tasks::ActiveModel {
+        title: Set(payload.title),
+        priority: Set(payload.priority),
+        description: Set(payload.description),
+        ..Default::default()
+    }; // get all fields by clicking at the error warning at the lower left of VSCode, then right clicking on the error message there
+    let active_model = new_task.save(&db_conn).await.unwrap();
+    dbg!(active_model);
+    Json(Output {
+        error_code: 0,
+        message: concat!("ok", "foo"),
     })
 }
-
-// Deserialize for input body, Debug for terminal print
+//------------------==
 #[derive(Deserialize, Debug)]
 pub struct CreateUser {
     username: String,
