@@ -1,8 +1,9 @@
 use axum::{
+    extract::path,
     //body,
     http::Method,
     middleware,
-    routing::{get, post},
+    routing::{get, patch, post, put},
     Extension,
     Router,
 };
@@ -21,8 +22,9 @@ pub async fn create_routes() -> Router {
     dotenv().ok();
     let db_postgres_uri = dotenvy::var("DB_POSTGRES_URL").unwrap();
     //let db_postgres_uri = dotenv!("DB_POSTGRES_URL");
-    let db_conn = connect_db(db_postgres_uri.as_str()).await.unwrap();
-    //.expect("failed to connect to database");
+    let db_conn = connect_db(db_postgres_uri.as_str())
+        .await
+        .expect("failed to connect to database");
 
     //to intercept incoming calls from untrusted brower origins
     let cors = CorsLayer::new()
@@ -52,7 +54,11 @@ pub async fn create_routes() -> Router {
         .route("/get_config", get(get_config))
         .route("/always_errors", get(always_errors))
         .route("/validate_struct_input", post(validate_struct_input))
-        .route("/create_task", post(create_task))
+        .route("/add_task", post(add_task))
+        .route("/tasks/:id", get(get_task_by_id))
+        .route("/tasks", get(get_tasks_all))
+        .route("/tasks/:id", put(replace_task))
+        .route("/tasks/:id", patch(update_partial_task))
         //.route("/todos/all", get(Todo::get_all_todos))
         //.route("/todo/create", post(Todo::create_a_todo))
         .route("/users", post(create_user))

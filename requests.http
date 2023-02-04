@@ -73,26 +73,75 @@ content-type: application/json
   "email": "abc"
 }
 
-### create_task
-POST http://localhost:3000/create_task
+### get_task_by_id
+GET http://localhost:3000/tasks/5
+
+### get_task_by_id
+GET http://localhost:3000/tasks/999
+### get_task_all
+GET http://localhost:3000/tasks
+### get_task_all + priority
+GET http://localhost:3000/tasks?priority=A
+### get_task_all + priority
+GET http://localhost:3000/tasks?priority=B
+### get_task_all + priority
+GET http://localhost:3000/tasks?priority=
+### get_task_all + priority
+GET http://localhost:3000/tasks?priority=D
+### get_task_all + priority
+GET http://localhost:3000/tasks?title=title1
+### get_task_all + priority
+GET http://localhost:3000/tasks?priority=A&title=title1
+
+### add_task
+POST http://localhost:3000/add_task
 content-type: application/json
 
 {
-  "title": "title one",
-  "priority": "AA",
-  "description": "description one"
+  "title": "title1",
+  "priority": "B",
+  "description": "description B"
 }
 
-### get all todos
-GET http://localhost:3000/todos/all
-
-### create a todo
-POST http://localhost:3000/todo/create
+### replace_task
+PUT http://localhost:3000/tasks/5
 content-type: application/json
 
 {
-  "title": "title one",
-  "description": "description one"
+    "task_id": 999,
+    "title": "title2",
+    "priority": "AB"
+}
+### get_task_by_id
+GET http://localhost:3000/tasks/5
+### update_partial_task
+PATCH http://localhost:3000/tasks/5
+content-type: application/json
+
+{
+    "task_id": 999,
+    "title": "title 22",
+    "priority": "ABC"
+}
+### update_partial_task
+PATCH http://localhost:3000/tasks/5
+content-type: application/json
+
+{
+    "task_id": 999,
+    "title": "title 22",
+    "priority": "AB",
+    "description": "some description"
+}
+### update_partial_task
+PATCH http://localhost:3000/tasks/5
+content-type: application/json
+
+{
+    "task_id": 999,
+    "title": "title 22",
+    "priority": "AB",
+    "description": null
 }
 
 ### Get Google

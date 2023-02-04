@@ -1,19 +1,22 @@
 use axum::{
     async_trait,
     body::HttpBody,
-    extract::{FromRequest, Path, Query, State},
+    extract::{FromRequest, Path, Query},
     headers::UserAgent,
-    http::{self, HeaderMap, Request, StatusCode},
+    http::{HeaderMap, Request, StatusCode},
     middleware::Next,
     response::Response,
     response::{Html, IntoResponse},
     BoxError, Extension, Json, RequestExt, TypedHeader,
 };
-use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
+use sea_orm::{
+    prelude::DateTimeWithTimeZone, ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection,
+    EntityTrait, IntoActiveModel, QueryFilter, Set,
+};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
-use crate::entities::tasks;
+use crate::entities::tasks::{self, ActiveModel, Entity as Tasks};
 
 /*use sqlx::MySqlPool;
 // basic handler that responds with a static string
@@ -145,27 +148,20 @@ where
         Ok(user)
     }
 }
-#[derive(Serialize)]
-pub struct Output<'a> {
-    error_code: u32,
-    message: &'a str,
+
+pub async fn validate_struct_input(json: AddUser) -> impl IntoResponse {
+    dbg!(json);
+    StatusCode::OK
 }
-pub async fn validate_struct_input(body: AddUser) -> impl IntoResponse {
-    dbg!(body);
-    Json(Output {
-        error_code: 0,
-        message: "ok",
-    })
-}
-/*pub async fn validate_struct_input(Json(body): Json<AddUser>) -> impl IntoResponse {
-    dbg!(&body);
+/*pub async fn validate_struct_input(Json(json): Json<AddUser>) -> impl IntoResponse {
+    dbg!(&json);
     (StatusCode::CREATED, "new user added".to_owned()).into_response()
 }
 -> Response {
     (StatusCode::CREATED, "new user added".to_owned()).into_response()}
 */
 
-// Serialize for output body
+// Serialize for output json
 #[derive(Serialize, Deserialize, Debug)]
 pub struct User {
     user_id: u64,
@@ -178,31 +174,193 @@ pub async fn get_user_by_id(Path(user_id): Path<u64>) -> impl IntoResponse {
         user_id,
     })
 }
-
-// Deserialize for input body, Debug for terminal print
-#[derive(Deserialize, Debug)]
-pub struct CreateTask {
+//------------------== Rest Read
+#[derive(Serialize, Debug)]
+pub struct ResponseTask {
+    pub task_id: i32,
     pub title: String,
     pub priority: Option<String>,
     pub description: Option<String>,
 }
-pub async fn create_task(
+//curl localhost:3000/user/9
+pub async fn get_task_by_id(
     Extension(db_conn): Extension<DatabaseConnection>,
-    Json(payload): Json<CreateTask>,
-) -> impl IntoResponse {
-    let new_task = tasks::ActiveModel {
-        title: Set(payload.title),
-        priority: Set(payload.priority),
-        description: Set(payload.description),
-        ..Default::default()
-    }; // get all fields by clicking at the error warning at the lower left of VSCode, then right clicking on the error message there
-    let active_model = new_task.save(&db_conn).await.unwrap();
-    dbg!(active_model);
-    Json(Output {
-        error_code: 0,
-        message: concat!("ok", "foo"),
-    })
+    Path(task_id): Path<i32>,
+) -> Result<Json<ResponseTask>, StatusCode> {
+    let task = Tasks::find_by_id(task_id).one(&db_conn).await.unwrap();
+    dbg!(&task);
+    if let Some(task) = task {
+        Ok(Json(ResponseTask {
+            task_id,
+            title: task.title,
+            priority: task.priority,
+            description: task.description,
+        }))
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
 }
+
+#[derive(Deserialize)]
+pub struct GetTasksParams {
+    pub task_id: Option<i32>,
+    pub title: Option<String>,
+    pub priority: Option<String>,
+}
+pub async fn get_tasks_all(
+    Extension(db_conn): Extension<DatabaseConnection>,
+    Query(query_params): Query<GetTasksParams>,
+) -> Result<Json<Vec<ResponseTask>>, StatusCode> {
+    let mut condition = Condition::all();
+    if let Some(priority) = query_params.priority {
+        dbg!(&priority);
+        condition = if priority.is_empty() {
+            condition.add(tasks::Column::Priority.is_null())
+        } else {
+            condition.add(tasks::Column::Priority.eq(priority))
+        };
+    }
+    if let Some(title) = query_params.title {
+        dbg!(&title);
+        condition = if title.is_empty() {
+            condition.add(tasks::Column::Title.is_null())
+        } else {
+            condition.add(tasks::Column::Title.eq(title))
+        };
+    }
+
+    let tasks = Tasks::find()
+        .filter(condition)
+        .all(&db_conn)
+        .await
+        .map_err(|_error| StatusCode::INTERNAL_SERVER_ERROR)?
+        .into_iter()
+        .map(|task| ResponseTask {
+            task_id: task.id,
+            title: task.title,
+            priority: task.priority,
+            description: task.description,
+        })
+        .collect();
+    Ok(Json(tasks))
+    //dbg!(&tasks);
+}
+//------------------== Rest Create(Add)
+// Deserialize for input json, Debug for terminal print
+#[derive(Deserialize, Debug)]
+pub struct AddTask {
+    pub title: String,
+    pub priority: Option<String>,
+    pub description: Option<String>,
+}
+pub async fn add_task(
+    Extension(db_conn): Extension<DatabaseConnection>,
+    Json(json): Json<AddTask>,
+) -> Result<String, StatusCode> {
+    let new_task = ActiveModel {
+        title: Set(json.title),
+        priority: Set(json.priority),
+        description: Set(json.description),
+        ..Default::default()
+    };
+    let active_model = new_task
+        .save(&db_conn)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    dbg!(active_model);
+    Ok("ok".to_owned())
+}
+//------------------== Rest Put(Replace or Atomic update)
+//PUT replacs the entire entity(overwrite any missing fields to null), while PATCH only updates the fields that you give it.
+#[derive(Deserialize, Debug)]
+pub struct ReplaceTask {
+    pub id: Option<i32>,
+    pub priority: Option<String>,
+    pub title: String,
+    pub completed_at: Option<DateTimeWithTimeZone>,
+    pub description: Option<String>,
+    pub deleted_at: Option<DateTimeWithTimeZone>,
+    pub user_id: Option<i32>,
+    pub is_default: Option<bool>,
+} //copied from entities/tasks.rs, change id to option so we keep the original id the same. Leave the rest unchange according to the DB settings
+pub async fn replace_task(
+    Extension(db_conn): Extension<DatabaseConnection>,
+    Path(task_id): Path<i32>,
+    Json(json): Json<ReplaceTask>,
+) -> Result<String, StatusCode> {
+    let replacing_task = ActiveModel {
+        id: Set(task_id),
+        priority: Set(json.priority),
+        title: Set(json.title),
+        completed_at: Set(json.completed_at),
+        description: Set(json.description),
+        deleted_at: Set(json.deleted_at),
+        user_id: Set(json.user_id),
+        is_default: Set(json.is_default),
+    };
+    Tasks::update(replacing_task)
+        .filter(tasks::Column::Id.eq(task_id))
+        .exec(&db_conn)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok("ok".to_owned())
+}
+//------------------== Rest Patch
+#[derive(Deserialize, Debug)]
+pub struct UpdatePartialTask {
+    //Should not use serde_with with single option!!!
+    pub id: Option<i32>,
+    #[serde(
+        default,// for deserialization
+        skip_serializing_if = "Option::is_none",//serialization
+        with = "::serde_with::rust::double_option",
+    )]
+    pub priority: Option<Option<String>>,
+    //Should not be null, so do not add serde_with with double option macro here!!!
+    pub title: Option<String>,
+    #[serde(
+        default,// for deserialization
+        skip_serializing_if = "Option::is_none",//serialization
+        with = "::serde_with::rust::double_option",
+    )]
+    pub description: Option<Option<String>>,
+} // remove user_id, completed_at, deleted_at and is_default so those cannot be set!
+pub async fn update_partial_task(
+    Extension(db_conn): Extension<DatabaseConnection>,
+    Path(task_id): Path<i32>,
+    Json(json): Json<UpdatePartialTask>,
+) -> Result<String, StatusCode> {
+    let mut existing_task = if let Some(task) = Tasks::find_by_id(task_id)
+        .one(&db_conn)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    {
+        task.into_active_model() //need active model
+    } else {
+        return Err(StatusCode::NOT_FOUND);
+    };
+
+    //if the priority field is set, even it is set to null
+    if let Some(priority) = json.priority {
+        existing_task.priority = Set(priority);
+    }
+    if let Some(description) = json.description {
+        existing_task.description = Set(description);
+    }
+    if let Some(title) = json.title {
+        existing_task.title = Set(title); //single option
+    }
+
+    dbg!(&existing_task);
+    Tasks::update(existing_task)
+        .filter(tasks::Column::Id.eq(task_id))
+        .exec(&db_conn)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok("ok".to_owned())
+}
+//------------------== Rest Delete
+
 //------------------==
 #[derive(Deserialize, Debug)]
 pub struct CreateUser {
@@ -211,12 +369,12 @@ pub struct CreateUser {
 pub async fn create_user(
     // this argument tells axum to parse the request body
     // as JSON into a `CreateUser` type
-    Json(payload): Json<CreateUser>,
+    Json(json): Json<CreateUser>,
 ) -> impl IntoResponse {
     // insert your application logic here
     let user = User {
         user_id: 1337,
-        username: payload.username,
+        username: json.username,
     };
 
     // this will be converted into a JSON response
