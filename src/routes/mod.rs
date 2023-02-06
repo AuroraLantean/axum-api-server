@@ -1,11 +1,8 @@
 use axum::{
-    extract::path,
-    //body,
     http::Method,
     middleware,
-    routing::{get, patch, post, put},
-    Extension,
-    Router,
+    routing::{delete, get, patch, post, put},
+    Extension, Router,
 };
 use dotenvy::dotenv;
 use route_func::*;
@@ -54,14 +51,16 @@ pub async fn create_routes() -> Router {
         .route("/get_config", get(get_config))
         .route("/always_errors", get(always_errors))
         .route("/validate_struct_input", post(validate_struct_input))
+        .route("/users", post(add_user))
+        .route("/users/login", post(login))
         .route("/add_task", post(add_task))
         .route("/tasks/:id", get(get_task_by_id))
         .route("/tasks", get(get_tasks_all))
         .route("/tasks/:id", put(replace_task))
         .route("/tasks/:id", patch(update_partial_task))
+        .route("/tasks/:id", delete(delete_task))
         //.route("/todos/all", get(Todo::get_all_todos))
         //.route("/todo/create", post(Todo::create_a_todo))
-        .route("/users", post(create_user))
         .layer(Extension(config))
         .layer(cors)
         .layer(Extension(db_conn))

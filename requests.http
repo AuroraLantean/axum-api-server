@@ -63,7 +63,7 @@ content-type: application/json
   "password": "12345678",
   "email": "abc@domain.com"
 }
-### validate_struct_input: fail in password length
+### validate_struct_input: fail in password length and email format
 POST http://localhost:3000/validate_struct_input
 content-type: application/json
 
@@ -72,6 +72,33 @@ content-type: application/json
   "password": "1234567",
   "email": "abc"
 }
+### add_user
+POST http://localhost:3000/users
+content-type: application/json
+
+{
+  "username": "John Doe2",
+  "password": "12345678",
+  "email": "abc@domain.com"
+}
+### add_user: fail in password length and email format
+POST http://localhost:3000/users
+content-type: application/json
+
+{
+  "username": "John Doe3",
+  "password": "1234567",
+  "email": "abc"
+}
+### add_user: fail in password length and email format
+POST http://localhost:3000/users/login
+content-type: application/json
+
+{
+  "username": "John Doe2",
+  "password": "12345678"
+}
+
 
 ### get_task_by_id
 GET http://localhost:3000/tasks/5
@@ -98,8 +125,8 @@ POST http://localhost:3000/add_task
 content-type: application/json
 
 {
-  "title": "title1",
-  "priority": "B",
+  "title": "title2",
+  "priority": "AB",
   "description": "description B"
 }
 
@@ -114,7 +141,7 @@ content-type: application/json
 }
 ### get_task_by_id
 GET http://localhost:3000/tasks/5
-### update_partial_task
+### update_partial_task: no descrition at all
 PATCH http://localhost:3000/tasks/5
 content-type: application/json
 
@@ -133,7 +160,7 @@ content-type: application/json
     "priority": "AB",
     "description": "some description"
 }
-### update_partial_task
+### update_partial_task: description has null value
 PATCH http://localhost:3000/tasks/5
 content-type: application/json
 
@@ -143,6 +170,27 @@ content-type: application/json
     "priority": "AB",
     "description": null
 }
+### get_task_by_id
+GET http://localhost:3000/tasks/5
+
+### get_task_all
+GET http://localhost:3000/tasks
+### get_task_all
+GET http://localhost:3000/tasks
+User-Agent: rest-client
+Accept: */*
+Accept-Language: en-GB,en-US;q=0.8,en;q=0.6,zh-CN;q=0.4
+Content-Type: application/json
+alg: HS256
+typ: JWT
+Authorization: Bearer vwig.3435u2ng.lv6iria
+
+### hard delete
+DELETE http://localhost:3000/tasks/5
+### soft delete
+DELETE http://localhost:3000/tasks/6?is_soft=true
+### get_task_by_id
+GET http://localhost:3000/tasks/6
 
 ### Get Google
 GET www.google.com 

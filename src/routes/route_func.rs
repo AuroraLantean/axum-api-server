@@ -9,6 +9,7 @@ use axum::{
     response::{Html, IntoResponse},
     BoxError, Extension, Json, RequestExt, TypedHeader,
 };
+use chrono::{DateTime, FixedOffset};
 use sea_orm::{
     prelude::DateTimeWithTimeZone, ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection,
     EntityTrait, IntoActiveModel, QueryFilter, Set,
@@ -16,7 +17,10 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
-use crate::entities::tasks::{self, ActiveModel, Entity as Tasks};
+use crate::entities::{
+    tasks::{self, Entity as Tasks},
+    users::{self, Entity as Users},
+};
 
 /*use sqlx::MySqlPool;
 // basic handler that responds with a static string
@@ -120,11 +124,19 @@ pub struct AddUser {
     pub password: String,
     #[validate(email(message = "must be a valid email"))]
     pub email: String,
-    pub nickname: Option<String>,
+    //pub legalname: Option<String>,
 } //Option field in input struct
+  //Custom Extractor to validate struct input
   //https://github.com/Keats/validator
+#[derive(Serialize, Debug)]
+pub struct ResponseAddUser {
+    pub user_id: i32,
+    pub username: String,
+    pub email: String,
+    pub token: Option<String>,
+    //pub deleted_at: Option<DateTime<FixedOffset>>,
+}
 
-//Custom Extractor to validate struct input
 //https://docs.rs/axum/latest/axum/extract/trait.FromRequest.html
 #[async_trait]
 impl<S, B> FromRequest<S, B> for AddUser
@@ -151,15 +163,76 @@ where
 
 pub async fn validate_struct_input(json: AddUser) -> impl IntoResponse {
     dbg!(json);
-    StatusCode::OK
-}
-/*pub async fn validate_struct_input(Json(json): Json<AddUser>) -> impl IntoResponse {
-    dbg!(&json);
     (StatusCode::CREATED, "new user added".to_owned()).into_response()
 }
--> Response {
-    (StatusCode::CREATED, "new user added".to_owned()).into_response()}
-*/
+
+pub async fn add_user(
+    Extension(db_conn): Extension<DatabaseConnection>,
+    //json: AddUser, //Must use this json format for validation!
+    Json(json): Json<AddUser>,
+) -> Result<Json<ResponseAddUser>, StatusCode> {
+    dbg!(&json);
+    let new_user = users::ActiveModel {
+        username: Set(json.username),
+        password: Set(json.password),
+        token: Set(Some("abcdef123455676".to_owned())),
+        ..Default::default()
+    }
+    .save(&db_conn)
+    .await
+    .map_err(|err| {
+        dbg!("saving new user failed: {:?}", err);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    dbg!(&new_user);
+    Ok(Json(ResponseAddUser {
+        user_id: new_user.id.unwrap(),
+        username: new_user.username.unwrap(),
+        email: json.email.to_owned(),
+        token: new_user.token.unwrap(),
+    }))
+}
+#[derive(Deserialize, Debug, Validate)]
+pub struct Login {
+    pub username: String,
+    #[validate(length(min = 8, message = "must have at least 8 characters"))]
+    pub password: String,
+} //Option field in input struct
+pub async fn login(
+    Extension(db_conn): Extension<DatabaseConnection>,
+    Json(json): Json<Login>,
+) -> Result<Json<ResponseAddUser>, StatusCode> {
+    dbg!("input json", &json);
+    let db_user = Users::find()
+        .filter(users::Column::Username.eq(json.username))
+        .one(&db_conn)
+        .await
+        .map_err(|err| {
+            dbg!("finding user failed: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    dbg!("db_user", &db_user);
+
+    if let Some(db_user) = db_user {
+        let new_token = "1234567890".to_owned();
+        let mut user = db_user.into_active_model();
+        user.token = Set(Some(new_token));
+
+        let saved_user = user
+            .save(&db_conn)
+            .await
+            .map_err(|_e| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        Ok(Json(ResponseAddUser {
+            user_id: saved_user.id.unwrap(),
+            username: saved_user.username.unwrap(),
+            email: "xyz@gmail.com".to_owned(),
+            token: saved_user.token.unwrap(),
+        }))
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
 
 // Serialize for output json
 #[derive(Serialize, Deserialize, Debug)]
@@ -181,20 +254,28 @@ pub struct ResponseTask {
     pub title: String,
     pub priority: Option<String>,
     pub description: Option<String>,
-}
+    pub deleted_at: Option<DateTime<FixedOffset>>,
+} //Find the field types from task: Option<Model>, then put them into the type fields inside this Output struct above; THEN add chronos with serde feature to serialize the output!
+
 //curl localhost:3000/user/9
 pub async fn get_task_by_id(
     Extension(db_conn): Extension<DatabaseConnection>,
     Path(task_id): Path<i32>,
 ) -> Result<Json<ResponseTask>, StatusCode> {
-    let task = Tasks::find_by_id(task_id).one(&db_conn).await.unwrap();
+    let task = Tasks::find_by_id(task_id)
+        .filter(tasks::Column::DeletedAt.is_null())
+        .one(&db_conn)
+        .await
+        .unwrap();
     dbg!(&task);
+
     if let Some(task) = task {
         Ok(Json(ResponseTask {
             task_id,
             title: task.title,
             priority: task.priority,
             description: task.description,
+            deleted_at: task.deleted_at,
         }))
     } else {
         Err(StatusCode::NOT_FOUND)
@@ -231,6 +312,7 @@ pub async fn get_tasks_all(
 
     let tasks = Tasks::find()
         .filter(condition)
+        .filter(tasks::Column::DeletedAt.is_null())
         .all(&db_conn)
         .await
         .map_err(|_error| StatusCode::INTERNAL_SERVER_ERROR)?
@@ -240,6 +322,7 @@ pub async fn get_tasks_all(
             title: task.title,
             priority: task.priority,
             description: task.description,
+            deleted_at: task.deleted_at,
         })
         .collect();
     Ok(Json(tasks))
@@ -253,22 +336,32 @@ pub struct AddTask {
     pub priority: Option<String>,
     pub description: Option<String>,
 }
+#[derive(Serialize, Debug)]
+pub struct ResponseAddTask {
+    pub title: String,
+    pub priority: Option<String>,
+    pub description: Option<String>,
+}
 pub async fn add_task(
     Extension(db_conn): Extension<DatabaseConnection>,
     Json(json): Json<AddTask>,
-) -> Result<String, StatusCode> {
-    let new_task = ActiveModel {
+) -> Result<Json<ResponseAddTask>, StatusCode> {
+    let new_task = tasks::ActiveModel {
         title: Set(json.title),
         priority: Set(json.priority),
         description: Set(json.description),
         ..Default::default()
     };
-    let active_model = new_task
+    let saved_task = new_task
         .save(&db_conn)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    dbg!(active_model);
-    Ok("ok".to_owned())
+    dbg!(&saved_task);
+    Ok(Json(ResponseAddTask {
+        title: saved_task.title.unwrap(),
+        priority: saved_task.priority.unwrap(),
+        description: saved_task.description.unwrap(),
+    }))
 }
 //------------------== Rest Put(Replace or Atomic update)
 //PUT replacs the entire entity(overwrite any missing fields to null), while PATCH only updates the fields that you give it.
@@ -288,7 +381,7 @@ pub async fn replace_task(
     Path(task_id): Path<i32>,
     Json(json): Json<ReplaceTask>,
 ) -> Result<String, StatusCode> {
-    let replacing_task = ActiveModel {
+    let replacing_task = tasks::ActiveModel {
         id: Set(task_id),
         priority: Set(json.priority),
         title: Set(json.title),
@@ -359,25 +452,63 @@ pub async fn update_partial_task(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok("ok".to_owned())
 }
+
 //------------------== Rest Delete
-
-//------------------==
 #[derive(Deserialize, Debug)]
-pub struct CreateUser {
-    username: String,
+pub struct QueryParamsDelete {
+    is_soft: bool,
 }
-pub async fn create_user(
-    // this argument tells axum to parse the request body
-    // as JSON into a `CreateUser` type
-    Json(json): Json<CreateUser>,
-) -> impl IntoResponse {
-    // insert your application logic here
-    let user = User {
-        user_id: 1337,
-        username: json.username,
+pub async fn delete_task(
+    Extension(db_conn): Extension<DatabaseConnection>,
+    Path(task_id): Path<i32>,
+    Query(query_params): Query<QueryParamsDelete>,
+) -> Result<String, StatusCode> {
+    let mut existing_task = if let Some(task) = Tasks::find_by_id(task_id)
+        .one(&db_conn)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    {
+        task.into_active_model() //need active model
+    } else {
+        return Err(StatusCode::NOT_FOUND);
     };
+    dbg!(&existing_task);
 
-    // this will be converted into a JSON response
-    // with a status code of `201 Created`
-    (StatusCode::CREATED, Json(user))
+    if query_params.is_soft {
+        dbg!("do soft delete"); //Note: soft delete can be recovered if you do a partial update and set deleted_at to null!
+        let now = chrono::Utc::now();
+        existing_task.deleted_at = Set(Some(now.into()));
+
+        Tasks::update(existing_task)
+            .filter(tasks::Column::Id.eq(task_id))
+            .exec(&db_conn)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        Ok("ok".to_owned())
+    } else {
+        dbg!("do hard delete");
+        let delete_result = Tasks::delete(existing_task)
+            .exec(&db_conn)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        if delete_result.rows_affected != 1 {
+            return Err(StatusCode::EXPECTATION_FAILED);
+        }
+        Ok("ok".to_owned())
+        /*
+        if you do not want to check if the item exists:
+        # Use delete_by_id
+        Tasks::delete_by_id(task_id)
+        .exec(&db_conn)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        # Use delete_many + filter ...
+        Tasks::delete_many()
+        .filter(tasks::Column::Id.eq(task_id))
+        .exec(&db_conn)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        */
+    }
 }
