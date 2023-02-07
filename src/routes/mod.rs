@@ -17,7 +17,7 @@ use database::*;
 
 pub async fn create_routes() -> Router {
     dotenv().ok();
-    let db_postgres_uri = dotenvy::var("DB_POSTGRES_URL").unwrap();
+    let db_postgres_uri = dotenvy::var("DB_POSTGRES_URL").expect("postgres url not found");
     //let db_postgres_uri = dotenv!("DB_POSTGRES_URL");
     let db_conn = connect_db(db_postgres_uri.as_str())
         .await
@@ -35,12 +35,18 @@ pub async fn create_routes() -> Router {
         mode: "normal".to_owned(),
     };
     // Extension(config), Extension(db_conn) MUST be below any routes to make data available to them
-    //place get_custom_middleware route to 1st route, and set_custom_middleware as 2nd route, so set_custom_middleware will only run before get_custom_middleware(the route above it)!!!
+    //logout must have auth to continue
+    //move hello up to test jwt to avoid logout every single time
+    //test jwt by waiting pass duration time
+    //route_layer can ONLY BE ONE!!
     Router::new()
-        .route("/get_custom_middleware", get(get_custom_middleware))
-        .route_layer(middleware::from_fn(set_custom_middleware))
-        .route("/", get(root))
+        .route("/users/logout", post(logout))
+        .route("/add_task", post(add_task))
         .route("/hello", get(hello))
+        .route_layer(middleware::from_fn(auth))
+        //.route("/get_custom_middleware", get(get_custom_middleware))
+        //.route_layer(middleware::from_fn(set_custom_middleware))
+        .route("/", get(root))
         .route("/html", get(send_html))
         .route("/get_body_string", post(get_body_string))
         .route("/user/:id", get(get_user_by_id))
@@ -53,7 +59,6 @@ pub async fn create_routes() -> Router {
         .route("/validate_struct_input", post(validate_struct_input))
         .route("/users", post(add_user))
         .route("/users/login", post(login))
-        .route("/add_task", post(add_task))
         .route("/tasks/:id", get(get_task_by_id))
         .route("/tasks", get(get_tasks_all))
         .route("/tasks/:id", put(replace_task))

@@ -22,3 +22,5 @@ dotenvy = "0.15.6"
 validator = { version = "0.16.0", features = ["derive"] }
 serde_with = "2.2.0"
 chrono = { version = "0.4.23", features = ["serde"] }
+bcrypt = "0.14.0"
+jsonwebtoken = "8.2.0"

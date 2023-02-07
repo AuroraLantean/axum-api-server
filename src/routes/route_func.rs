@@ -2,7 +2,7 @@ use axum::{
     async_trait,
     body::HttpBody,
     extract::{FromRequest, Path, Query},
-    headers::UserAgent,
+    headers::{authorization::Bearer, Authorization, HeaderMapExt, UserAgent},
     http::{HeaderMap, Request, StatusCode},
     middleware::Next,
     response::Response,
@@ -17,9 +17,12 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
-use crate::entities::{
-    tasks::{self, Entity as Tasks},
-    users::{self, Entity as Users},
+use crate::{
+    entities::{
+        tasks::{self, Entity as Tasks},
+        users::{self, Entity as Users, Model as UserModel},
+    },
+    utils::{hash_password, make_jwt, verify_jwt, verify_password, AppError},
 };
 
 /*use sqlx::MySqlPool;
@@ -77,11 +80,6 @@ pub async fn always_errors() -> Result<(), StatusCode> {
 pub async fn query_headers(TypedHeader(user_agent): TypedHeader<UserAgent>) -> String {
     user_agent.to_string()
 }
-// needs "headers" feature from axum
-pub async fn query_custom_headers(headers: HeaderMap) -> String {
-    let auth_headervalue = headers.get("Authorization").unwrap(); //can be used for "User-Agent"
-    auth_headervalue.to_str().unwrap().to_owned()
-}
 
 #[derive(Clone)] //ADD Clone to avoid trait bound error
 pub struct SecurityLevel(pub String);
@@ -95,6 +93,7 @@ pub async fn set_custom_middleware<B>(
     mut request: Request<B>,
     next: Next<B>,
 ) -> Result<Response, StatusCode> {
+    println!("----------== set_custom_middleware");
     let headers = request.headers();
     //let security_level = headers.get("security-level").unwrap(); // will crash the server if error happens!
     let security_level = headers
@@ -109,7 +108,52 @@ pub async fn set_custom_middleware<B>(
     extensions.insert(SecurityLevel(security_level));
     Ok(next.run(request).await)
 }
+// needs "headers" feature from axum; custom extractor or mirror custom header
+pub async fn query_custom_headers(headers: HeaderMap) -> String {
+    let auth_headervalue = headers.get("Authorization").expect("err1"); //can be used for "User-Agent"
+    auth_headervalue.to_str().expect("err2").to_owned()
+}
+pub async fn auth<T>(mut request: Request<T>, next: Next<T>) -> Result<Response, AppError> {
+    println!("auth");
+    let token = request
+        .headers()
+        .typed_get::<Authorization<Bearer>>()
+        .ok_or_else(|| {
+            println!("auth err 101");
+            AppError::new(StatusCode::BAD_REQUEST, "error 101")
+        })?
+        .token()
+        .to_owned();
+    dbg!(&token);
 
+    let db_conn = request
+        .extensions()
+        .get::<DatabaseConnection>()
+        .ok_or_else(|| {
+            println!("auth err 102");
+            AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "error 102")
+        })?;
+    println!("db connected");
+
+    let user = Users::find()
+        .filter(users::Column::Token.eq(Some(token.clone())))
+        .one(db_conn)
+        .await
+        .map_err(|err| {
+            println!("error 103: {}", err);
+            AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "error 103")
+        })?;
+    println!("user option is found");
+    let Some(user) = user else {
+        return Err(AppError::new(StatusCode::UNAUTHORIZED, "unauthorized. login or sign up. error 104"))
+    };
+    println!("user is valid");
+    verify_jwt(&token)?; //move jwt verification here to confuse hackers so they don't know what is wrong out of jwt, db, or user
+    println!("token is valid");
+
+    request.extensions_mut().insert(user);
+    Ok(next.run(request).await)
+}
 //2xx: all ok. 201 success for created item
 //3xx: redirect ok
 //4xx: errors from the client, 401 and 403 are auth based
@@ -149,6 +193,7 @@ where
     type Rejection = (StatusCode, String);
 
     async fn from_request(request: Request<B>, _state: &S) -> Result<Self, Self::Rejection> {
+        println!("----------== from_request");
         let Json(user) = request
             .extract::<Json<AddUser>, _>()
             .await
@@ -172,16 +217,18 @@ pub async fn add_user(
     Json(json): Json<AddUser>,
 ) -> Result<Json<ResponseAddUser>, StatusCode> {
     dbg!(&json);
+    let jwt_token = make_jwt()?;
     let new_user = users::ActiveModel {
         username: Set(json.username),
-        password: Set(json.password),
-        token: Set(Some("abcdef123455676".to_owned())),
+        password: Set(hash_password(json.password)?),
+        token: Set(Some(jwt_token)),
         ..Default::default()
     }
     .save(&db_conn)
     .await
     .map_err(|err| {
-        dbg!("saving new user failed: {:?}", err);
+        println!("saving new user failed:");
+        dbg!(err);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     dbg!(&new_user);
@@ -202,21 +249,27 @@ pub async fn login(
     Extension(db_conn): Extension<DatabaseConnection>,
     Json(json): Json<Login>,
 ) -> Result<Json<ResponseAddUser>, StatusCode> {
-    dbg!("input json", &json);
+    dbg!(&json);
     let db_user = Users::find()
         .filter(users::Column::Username.eq(json.username))
         .one(&db_conn)
         .await
         .map_err(|err| {
-            dbg!("finding user failed: {:?}", err);
+            println!("finding user failed:");
+            dbg!(err);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
-    dbg!("db_user", &db_user);
+    dbg!(&db_user);
 
     if let Some(db_user) = db_user {
-        let new_token = "1234567890".to_owned();
+        if !verify_password(json.password, &db_user.password)? {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+
+        let jwt_token = make_jwt()?;
+        println!("new jwt_token:{}", jwt_token);
         let mut user = db_user.into_active_model();
-        user.token = Set(Some(new_token));
+        user.token = Set(Some(jwt_token));
 
         let saved_user = user
             .save(&db_conn)
@@ -232,6 +285,20 @@ pub async fn login(
     } else {
         Err(StatusCode::NOT_FOUND)
     }
+}
+pub async fn logout(
+    Extension(db_conn): Extension<DatabaseConnection>,
+    //TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
+    Extension(user): Extension<UserModel>,
+) -> Result<(), StatusCode> {
+    let mut user = user.into_active_model();
+    dbg!(&user);
+    user.token = Set(None);
+    let _saved_user = user
+        .save(&db_conn)
+        .await
+        .map_err(|_e| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(())
 }
 
 // Serialize for output json
@@ -255,6 +322,7 @@ pub struct ResponseTask {
     pub priority: Option<String>,
     pub description: Option<String>,
     pub deleted_at: Option<DateTime<FixedOffset>>,
+    pub user_id: Option<i32>,
 } //Find the field types from task: Option<Model>, then put them into the type fields inside this Output struct above; THEN add chronos with serde feature to serialize the output!
 
 //curl localhost:3000/user/9
@@ -266,7 +334,8 @@ pub async fn get_task_by_id(
         .filter(tasks::Column::DeletedAt.is_null())
         .one(&db_conn)
         .await
-        .unwrap();
+        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     dbg!(&task);
 
     if let Some(task) = task {
@@ -276,6 +345,7 @@ pub async fn get_task_by_id(
             priority: task.priority,
             description: task.description,
             deleted_at: task.deleted_at,
+            user_id: task.user_id,
         }))
     } else {
         Err(StatusCode::NOT_FOUND)
@@ -323,6 +393,7 @@ pub async fn get_tasks_all(
             priority: task.priority,
             description: task.description,
             deleted_at: task.deleted_at,
+            user_id: task.user_id,
         })
         .collect();
     Ok(Json(tasks))
@@ -344,12 +415,18 @@ pub struct ResponseAddTask {
 }
 pub async fn add_task(
     Extension(db_conn): Extension<DatabaseConnection>,
+    Extension(user): Extension<UserModel>,
     Json(json): Json<AddTask>,
+    //TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
+    //auth: TypedHeader<Authorization<Bearer>>,
 ) -> Result<Json<ResponseAddTask>, StatusCode> {
+    let user = user.into_active_model();
+
     let new_task = tasks::ActiveModel {
         title: Set(json.title),
         priority: Set(json.priority),
         description: Set(json.description),
+        user_id: Set(Some(user.id.unwrap())),
         ..Default::default()
     };
     let saved_task = new_task
@@ -473,7 +550,6 @@ pub async fn delete_task(
         return Err(StatusCode::NOT_FOUND);
     };
     dbg!(&existing_task);
-
     if query_params.is_soft {
         dbg!("do soft delete"); //Note: soft delete can be recovered if you do a partial update and set deleted_at to null!
         let now = chrono::Utc::now();
