@@ -2,7 +2,10 @@
 use std::net::SocketAddr;
 
 mod routes;
+use dotenvy::dotenv;
 use routes::create_routes;
+mod database;
+use database::*;
 mod entities; //load up all db entity files
 mod utils;
 
@@ -10,8 +13,15 @@ mod utils;
 async fn main() {
     // initialize tracing
     tracing_subscriber::fmt::init();
+    dotenv().expect(".env file not found");
+    let db_postgres_uri = dotenvy::var("DB_POSTGRES_URL").expect("postgres url not found");
+    //let db_postgres_uri = dotenv!("DB_POSTGRES_URL");
+    let db_conn = connect_db(db_postgres_uri.as_str())
+        .await
+        .expect("failed to connect to database");
 
-    let app = create_routes();
+    let mode = "normal".to_owned();
+    let app = create_routes(mode, db_conn);
 
     // `axum::Server` is a re-export of `hyper::Server`
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000)); // 0.0.0.0 is compatible for docker containers and VM

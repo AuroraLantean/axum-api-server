@@ -33,8 +33,10 @@ Content-Type: application/json
 alg: HS256
 typ: JWT
 Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2NzU3NjU0NjIsImlhdCI6MTY3NTc2NTQzMn0.D-kvS-O9wTYMYeYjc4FugbHOFEIrKtiUH7JJSNEoI8U
-### get_config
-GET http://localhost:3000/get_config
+### get_appstate
+GET http://localhost:3000/get_appstate
+### get_appstate_mode
+GET http://localhost:3000/get_appstate_mode
 
 ### get_custom_middleware
 GET http://localhost:3000/get_custom_middleware
@@ -121,7 +123,7 @@ Accept-Language: en-GB,en-US;q=0.8,en;q=0.6,zh-CN;q=0.4
 Content-Type: application/json
 alg: HS256
 typ: JWT
-Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2NzU3Njk1MTgsImlhdCI6MTY3NTc2OTQ4OH0.WoegSf9cTpwiaFLirbS-pGFvAurPXBNpSX1Bo4a-SYE
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2NzU4NTYwMjQsImlhdCI6MTY3NTg1NTk5NH0.F2jJtWJ0wd6XYH7dHfERLzEo9mHvoqidokucdsWfI5w
 ### logout
 POST http://localhost:3000/users/logout
 User-Agent: rest-client
@@ -175,7 +177,7 @@ content-type: application/json
     "priority": "AB"
 }
 ### get_task_by_id
-GET http://localhost:3000/tasks/5
+GET http://localhost:3000/tasks/9
 ### update_partial_task: no descrition at all
 PATCH http://localhost:3000/tasks/5
 content-type: application/json

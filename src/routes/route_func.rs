@@ -1,8 +1,8 @@
 use axum::{
     async_trait,
     body::HttpBody,
-    extract::{FromRequest, Path, Query},
-    headers::{authorization::Bearer, Authorization, HeaderMapExt, UserAgent},
+    extract::{FromRequest, Path, Query, State},
+    headers::{authorization::Bearer, Authorization, UserAgent},
     http::{HeaderMap, Request, StatusCode},
     middleware::Next,
     response::Response,
@@ -24,6 +24,8 @@ use crate::{
     },
     utils::{hash_password, make_jwt, verify_jwt, verify_password, AppError},
 };
+
+use super::AppState;
 
 /*use sqlx::MySqlPool;
 // basic handler that responds with a static string
@@ -63,13 +65,12 @@ pub async fn query_params(Query(query): Query<QueryParams>) -> impl IntoResponse
     Json(query)
 }
 
-// get_config
-#[derive(Clone)]
-pub struct Config {
-    pub mode: String,
+// State(..) will check if ".with_state(..) is in the routes"
+pub async fn get_appstate(State(app_state): State<AppState>) -> String {
+    app_state.mode
 }
-pub async fn get_config(Extension(config): Extension<Config>) -> String {
-    config.mode
+pub async fn get_appstate_mode(State(mode): State<String>) -> String {
+    mode
 }
 pub async fn always_errors() -> Result<(), StatusCode> {
     Err(StatusCode::IM_A_TEAPOT)
@@ -98,7 +99,7 @@ pub async fn set_custom_middleware<B>(
     //let security_level = headers.get("security-level").unwrap(); // will crash the server if error happens!
     let security_level = headers
         .get("security-level")
-        .ok_or_else(|| StatusCode::BAD_REQUEST)?;
+        .ok_or(StatusCode::BAD_REQUEST)?;
     let security_level = security_level
         .to_str()
         .map_err(|_error| StatusCode::BAD_REQUEST)?
@@ -113,34 +114,41 @@ pub async fn query_custom_headers(headers: HeaderMap) -> String {
     let auth_headervalue = headers.get("Authorization").expect("err1"); //can be used for "User-Agent"
     auth_headervalue.to_str().expect("err2").to_owned()
 }
-pub async fn auth<T>(mut request: Request<T>, next: Next<T>) -> Result<Response, AppError> {
+//put your extractor after State(db_conn)
+pub async fn auth<T>(
+    State(db_conn): State<DatabaseConnection>,
+    TypedHeader(token): TypedHeader<Authorization<Bearer>>,
+    mut request: Request<T>,
+    next: Next<T>,
+) -> Result<Response, AppError> {
     println!("auth");
-    let token = request
-        .headers()
-        .typed_get::<Authorization<Bearer>>()
-        .ok_or_else(|| {
-            println!("auth err 101");
-            AppError::new(StatusCode::BAD_REQUEST, "error 101")
-        })?
-        .token()
-        .to_owned();
+    let token = token.token().to_owned();
+    // let token = request
+    //     .headers()
+    //     .typed_get::<Authorization<Bearer>>()
+    //     .ok_or_else(|| {
+    //         println!("auth err 101");
+    //         AppError::new(StatusCode::BAD_REQUEST, "error 101")
+    //     })?
+    //     .token()
+    //     .to_owned();
     dbg!(&token);
 
-    let db_conn = request
-        .extensions()
-        .get::<DatabaseConnection>()
-        .ok_or_else(|| {
-            println!("auth err 102");
-            AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "error 102")
-        })?;
+    // let db_conn = request
+    //     .extensions()
+    //     .get::<DatabaseConnection>()
+    //     .ok_or_else(|| {
+    //         println!("auth err 102");
+    //         AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "error 102")
+    //     })?;
     println!("db connected");
 
     let user = Users::find()
         .filter(users::Column::Token.eq(Some(token.clone())))
-        .one(db_conn)
+        .one(&db_conn)
         .await
         .map_err(|err| {
-            println!("error 103: {}", err);
+            println!("error 103: {err}");
             AppError::new(StatusCode::INTERNAL_SERVER_ERROR, "error 103")
         })?;
     println!("user option is found");
@@ -197,10 +205,10 @@ where
         let Json(user) = request
             .extract::<Json<AddUser>, _>()
             .await
-            .map_err(|error| (StatusCode::BAD_REQUEST, format!("{}", error)))?;
+            .map_err(|error| (StatusCode::BAD_REQUEST, format!("{error}")))?;
 
         if let Err(errors) = user.validate() {
-            return Err((StatusCode::BAD_REQUEST, format!("{}", errors)));
+            return Err((StatusCode::BAD_REQUEST, format!("{errors}")));
         }
         Ok(user)
     }
@@ -212,7 +220,7 @@ pub async fn validate_struct_input(json: AddUser) -> impl IntoResponse {
 }
 
 pub async fn add_user(
-    Extension(db_conn): Extension<DatabaseConnection>,
+    State(db_conn): State<DatabaseConnection>,
     //json: AddUser, //Must use this json format for validation!
     Json(json): Json<AddUser>,
 ) -> Result<Json<ResponseAddUser>, StatusCode> {
@@ -239,6 +247,7 @@ pub async fn add_user(
         token: new_user.token.unwrap(),
     }))
 }
+// State(..) will check if ".with_state(..) is in the routes"
 #[derive(Deserialize, Debug, Validate)]
 pub struct Login {
     pub username: String,
@@ -246,7 +255,7 @@ pub struct Login {
     pub password: String,
 } //Option field in input struct
 pub async fn login(
-    Extension(db_conn): Extension<DatabaseConnection>,
+    State(db_conn): State<DatabaseConnection>,
     Json(json): Json<Login>,
 ) -> Result<Json<ResponseAddUser>, StatusCode> {
     dbg!(&json);
@@ -267,7 +276,7 @@ pub async fn login(
         }
 
         let jwt_token = make_jwt()?;
-        println!("new jwt_token:{}", jwt_token);
+        println!("new jwt_token:{jwt_token}");
         let mut user = db_user.into_active_model();
         user.token = Set(Some(jwt_token));
 
@@ -287,7 +296,7 @@ pub async fn login(
     }
 }
 pub async fn logout(
-    Extension(db_conn): Extension<DatabaseConnection>,
+    State(db_conn): State<DatabaseConnection>,
     //TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
     Extension(user): Extension<UserModel>,
 ) -> Result<(), StatusCode> {
@@ -327,7 +336,7 @@ pub struct ResponseTask {
 
 //curl localhost:3000/user/9
 pub async fn get_task_by_id(
-    Extension(db_conn): Extension<DatabaseConnection>,
+    State(db_conn): State<DatabaseConnection>,
     Path(task_id): Path<i32>,
 ) -> Result<Json<ResponseTask>, StatusCode> {
     let task = Tasks::find_by_id(task_id)
@@ -359,7 +368,7 @@ pub struct GetTasksParams {
     pub priority: Option<String>,
 }
 pub async fn get_tasks_all(
-    Extension(db_conn): Extension<DatabaseConnection>,
+    State(db_conn): State<DatabaseConnection>,
     Query(query_params): Query<GetTasksParams>,
 ) -> Result<Json<Vec<ResponseTask>>, StatusCode> {
     let mut condition = Condition::all();
@@ -414,7 +423,7 @@ pub struct ResponseAddTask {
     pub description: Option<String>,
 }
 pub async fn add_task(
-    Extension(db_conn): Extension<DatabaseConnection>,
+    State(db_conn): State<DatabaseConnection>,
     Extension(user): Extension<UserModel>,
     Json(json): Json<AddTask>,
     //TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
@@ -454,7 +463,7 @@ pub struct ReplaceTask {
     pub is_default: Option<bool>,
 } //copied from entities/tasks.rs, change id to option so we keep the original id the same. Leave the rest unchange according to the DB settings
 pub async fn replace_task(
-    Extension(db_conn): Extension<DatabaseConnection>,
+    State(db_conn): State<DatabaseConnection>,
     Path(task_id): Path<i32>,
     Json(json): Json<ReplaceTask>,
 ) -> Result<String, StatusCode> {
@@ -496,7 +505,7 @@ pub struct UpdatePartialTask {
     pub description: Option<Option<String>>,
 } // remove user_id, completed_at, deleted_at and is_default so those cannot be set!
 pub async fn update_partial_task(
-    Extension(db_conn): Extension<DatabaseConnection>,
+    State(db_conn): State<DatabaseConnection>,
     Path(task_id): Path<i32>,
     Json(json): Json<UpdatePartialTask>,
 ) -> Result<String, StatusCode> {
@@ -536,7 +545,7 @@ pub struct QueryParamsDelete {
     is_soft: bool,
 }
 pub async fn delete_task(
-    Extension(db_conn): Extension<DatabaseConnection>,
+    State(db_conn): State<DatabaseConnection>,
     Path(task_id): Path<i32>,
     Query(query_params): Query<QueryParamsDelete>,
 ) -> Result<String, StatusCode> {
