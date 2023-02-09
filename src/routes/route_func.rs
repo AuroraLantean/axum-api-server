@@ -17,6 +17,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
+use super::AppState;
 use crate::{
     entities::{
         tasks::{self, Entity as Tasks},
@@ -24,8 +25,8 @@ use crate::{
     },
     utils::{hash_password, make_jwt, verify_jwt, verify_password, AppError},
 };
-
-use super::AppState;
+use std::time::Duration;
+use std::{sync::mpsc, thread};
 
 /*use sqlx::MySqlPool;
 // basic handler that responds with a static string
@@ -596,4 +597,51 @@ pub async fn delete_task(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         */
     }
+}
+#[derive(Serialize, Debug)]
+pub struct RespBlockchain {
+    pub number: Option<u64>,
+    pub address: Option<String>,
+    pub error: Option<String>,
+}
+#[derive(Deserialize, Debug)]
+pub struct ReqBlockchain {
+    pub num1: Option<u64>,
+    pub num2: Option<u64>,
+    pub addr1: Option<String>,
+    pub addr2: Option<String>,
+}
+pub async fn run_thread(
+    State(_db_conn): State<DatabaseConnection>,
+    Json(json): Json<ReqBlockchain>,
+) -> Result<Json<RespBlockchain>, String> {
+    dbg!(&json);
+    println!("run_thread");
+    dbg!(json);
+    let main1 = 1;
+    let (tx, rx) = mpsc::channel::<u64>();
+    //let mut result = Err(BCError::new(0, "error 141"));
+    let handle = thread::spawn(move || {
+        for i in 1..5 {
+            println!("inside thread. i = {}, main1 = {}", i, main1);
+            thread::sleep(Duration::from_millis(1));
+        }
+        tx.send(1000).map_err(|err| {
+            println!("err1: {err}");
+            "tx.send() failed".to_owned()
+        })
+        //.expect("tx.send() failed");
+    });
+    match handle.join() {
+        Err(e) => println!("{:?}", e),
+        _ => (),
+    }
+
+    println!("main thread continue after waiting for the thread");
+    let out = rx.recv().expect("rx.recv() failed");
+    Ok(Json(RespBlockchain {
+        number: Some(out),
+        address: None,
+        error: None,
+    }))
 }

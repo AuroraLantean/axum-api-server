@@ -17,7 +17,7 @@ uuid = { version = "1.2.2", features = ["serde", "v4"] }
 #sqlx = { version = "0.6.2", features = ["mysql", "runtime-tokio-native-tls"] }
 
 # sea-orm has 3 drivers: sqlx-postgres, sqlx-mysql, sqlx-sqlite
-sea-orm = { version = "0.10.7", features = ["sqlx-postgres", "runtime-tokio-rustls"] }
+sea-orm = { version = "0.11.0", features = ["sqlx-postgres", "runtime-tokio-rustls"] }
 dotenvy = "0.15.6"
 validator = { version = "0.16.0", features = ["derive"] }
 serde_with = "2.2.0"

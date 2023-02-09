@@ -60,7 +60,7 @@ pub async fn create_routes(mode: String, db_conn: DatabaseConnection) -> Router 
         .route("/tasks/:id", put(replace_task))
         .route("/tasks/:id", patch(update_partial_task))
         .route("/tasks/:id", delete(delete_task))
-        //.with_state(config)
+        .route("/run_thread", post(run_thread))
         .layer(cors)
         .with_state(app_state)
 }

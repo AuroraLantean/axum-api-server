@@ -19,10 +19,16 @@ Set bcrypt hash cost to 14 or above to ensure enought time cost against hackers
 
 ## Implement .env file from env.template
 
+Example:
+DB_POSTGRES_URL=protocol://username:password@host/database
+JWT_SECRET=abcd
+HASHCOST=14
+
 ```
-DATABASE_URL_EXAMPLE=protocol://username:password@host/database
 DB_MYSQL_URL=
 DB_POSTGRES_URL=
+JWT_SECRET=
+HASHCOST=
 ```
 
 ## Start Database
@@ -36,6 +42,7 @@ docker compose logs database
 ## Generate Sea-orm entities
 
 https://www.sea-ql.org/SeaORM/docs/generate-entity/sea-orm-cli/
+
 [Note] Generate entity files if you change your database structure!
 
 ```
