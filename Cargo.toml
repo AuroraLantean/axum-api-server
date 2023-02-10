@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 axum = { version = "0.6.4", features = ["headers", "macros"] }
 serde = { version = "1.0.152", features = ["derive"] }
-tokio = { version = "1.25.0", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.25.0", features = ["macros", "rt-multi-thread", "full"] }
 tower = { version = "0.4.13", features = ["util", "timeout"] }
 tower-http = { version = "0.3.5", features = ["add-extension", "trace", "cors"] }
 tracing = "0.1.37"
@@ -24,3 +24,18 @@ serde_with = "2.2.0"
 chrono = { version = "0.4.23", features = ["serde"] }
 bcrypt = "0.14.0"
 jsonwebtoken = "8.2.0"
+clap = { version = "4.1.4", features = ["derive"] }
+ethers = { version = "1.0.2", features = ["legacy"] }
+ethers-solc = { version = "1.0.2", features = ["full"] }
+ethers-providers = "1.0.2"
+eyre = "0.6.8"
+hex = "0.4.3"
+
+[[bin]]
+name = "transact"
+path="src/simple_transactions.rs"
+
+
+[[bin]]
+name = "deploy"
+path="src/contract_deploy.rs"

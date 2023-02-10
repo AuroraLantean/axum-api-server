@@ -115,7 +115,7 @@ content-type: application/json
   "username": "John Doe5",
   "password": "12345678"
 }
-### JWT
+### JWT https://github.com/Huachao/vscode-restclient
 GET http://localhost:3000/hello
 User-Agent: rest-client
 Accept: */*

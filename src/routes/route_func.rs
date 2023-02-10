@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 use super::AppState;
+use crate::blockchain::simple_transactions::*;
 use crate::{
     entities::{
         tasks::{self, Entity as Tasks},
@@ -27,7 +28,6 @@ use crate::{
 };
 use std::time::Duration;
 use std::{sync::mpsc, thread};
-
 /*use sqlx::MySqlPool;
 // basic handler that responds with a static string
 pub async fn root(State(_db): State<MySqlPool>) -> &'static str {
@@ -170,6 +170,7 @@ pub async fn auth<T>(
 
 //201 means success at created item
 
+//https://github.com/Keats/validator
 #[derive(Deserialize, Debug, Validate)]
 pub struct AddUser {
     pub username: String,
@@ -611,16 +612,44 @@ pub struct ReqBlockchain {
     pub addr1: Option<String>,
     pub addr2: Option<String>,
 }
+pub async fn eth_get_token_balance(
+    State(_db_conn): State<DatabaseConnection>,
+    Json(json): Json<ReqBlockchain>,
+) -> Result<Json<RespBlockchain>, String> {
+    println!("eth_get_token_balance");
+    dbg!(&json);
+
+    let out = 1000;
+    Ok(Json(RespBlockchain {
+        number: Some(out),
+        address: None,
+        error: None,
+    }))
+}
+pub async fn eth_transfer_token(
+    State(_db_conn): State<DatabaseConnection>,
+    Json(json): Json<ReqBlockchain>,
+) -> Result<Json<RespBlockchain>, String> {
+    println!("eth_transfer_token");
+    dbg!(&json);
+
+    let txn_result = ethereum_simple_txn().await.map_err(|_e| "err".to_owned())?;
+    let out = 1000;
+    Ok(Json(RespBlockchain {
+        number: Some(out),
+        address: None,
+        error: None,
+    }))
+}
 pub async fn run_thread(
     State(_db_conn): State<DatabaseConnection>,
     Json(json): Json<ReqBlockchain>,
 ) -> Result<Json<RespBlockchain>, String> {
-    dbg!(&json);
     println!("run_thread");
+    dbg!(&json);
     dbg!(json);
     let main1 = 1;
     let (tx, rx) = mpsc::channel::<u64>();
-    //let mut result = Err(BCError::new(0, "error 141"));
     let handle = thread::spawn(move || {
         for i in 1..5 {
             println!("inside thread. i = {}, main1 = {}", i, main1);
@@ -630,15 +659,13 @@ pub async fn run_thread(
             println!("err1: {err}");
             "tx.send() failed".to_owned()
         })
-        //.expect("tx.send() failed");
     });
-    match handle.join() {
-        Err(e) => println!("{:?}", e),
-        _ => (),
-    }
+    handle
+        .join()
+        .map_err(|_e| "handle.join() failed".to_owned())??;
 
     println!("main thread continue after waiting for the thread");
-    let out = rx.recv().expect("rx.recv() failed");
+    let out = rx.recv().map_err(|_e| "rx.recv() failed".to_owned())?;
     Ok(Json(RespBlockchain {
         number: Some(out),
         address: None,

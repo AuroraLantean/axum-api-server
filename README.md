@@ -13,6 +13,12 @@ Since validating time fields is always a bit tricky due to clock skew, you can a
 
 Set bcrypt hash cost to 14 or above to ensure enought time cost against hackers
 
+## Ethereum Dependencies
+
+- Clap: A full featured, fast Command Line Argument Parser
+- Eyre: Flexible concrete Error Reporting type built on std::error::Error with customizable Reports
+- Hex: Encoding and decoding data into/from hexadecimal representation.
+
 ## Install Rust and global dependencies
 
 `cargo install cargo-watch`

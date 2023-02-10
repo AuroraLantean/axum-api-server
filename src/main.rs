@@ -1,8 +1,8 @@
 //use sqlx::{MySql, MySqlPool};
-use std::net::SocketAddr;
-
-mod routes;
 use dotenvy::dotenv;
+use std::net::SocketAddr;
+pub mod blockchain;
+mod routes;
 use routes::create_routes;
 mod database;
 use database::*;
