@@ -62,6 +62,7 @@ pub async fn create_routes(mode: String, db_conn: DatabaseConnection) -> Router 
         .route("/tasks/:id", delete(delete_task))
         .route("/eth_get_token_balance", get(eth_get_token_balance))
         .route("/eth_transfer_token", post(eth_transfer_token))
+        .route("/eth_deploy_contract", post(eth_deploy_contract))
         .route("/run_thread", post(run_thread))
         .layer(cors)
         .with_state(app_state)

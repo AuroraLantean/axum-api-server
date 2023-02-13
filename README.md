@@ -27,14 +27,16 @@ Set bcrypt hash cost to 14 or above to ensure enought time cost against hackers
 
 Example:
 DB_POSTGRES_URL=protocol://username:password@host/database
-JWT_SECRET=abcd
-HASHCOST=14
+[Note] MNEMONIC MUST include double quotation marks or the MNEMONIC cannot be completely read properly
 
 ```
 DB_MYSQL_URL=
 DB_POSTGRES_URL=
 JWT_SECRET=
 HASHCOST=
+ETHERSCAN_KEY=
+MNEMONIC=
+INFURA_KEY=
 ```
 
 ## Start Database
@@ -54,6 +56,14 @@ https://www.sea-ql.org/SeaORM/docs/generate-entity/sea-orm-cli/
 ```
 cargo install sea-orm-cli
 sea-orm-cli generate entity -o src/entities -u YOUR_DATABASE_URI -o entity/src
+```
+
+## Install Ganache-CLI
+
+https://github.com/trufflesuite/ganache
+
+```
+npm install ganache --global
 ```
 
 ## To Run in development mode

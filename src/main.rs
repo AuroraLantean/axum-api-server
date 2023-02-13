@@ -14,12 +14,13 @@ async fn main() {
     // initialize tracing
     tracing_subscriber::fmt::init();
     dotenv().expect(".env file not found");
+    println!(".env file is found");
     let db_postgres_uri = dotenvy::var("DB_POSTGRES_URL").expect("postgres url not found");
     //let db_postgres_uri = dotenv!("DB_POSTGRES_URL");
     let db_conn = connect_db(db_postgres_uri.as_str())
         .await
         .expect("failed to connect to database");
-
+    println!("db_conn is successful");
     let mode = "normal".to_owned();
     let app = create_routes(mode, db_conn);
 

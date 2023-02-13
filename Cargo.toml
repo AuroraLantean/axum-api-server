@@ -30,12 +30,3 @@ ethers-solc = { version = "1.0.2", features = ["full"] }
 ethers-providers = "1.0.2"
 eyre = "0.6.8"
 hex = "0.4.3"
-
-[[bin]]
-name = "transact"
-path="src/simple_transactions.rs"
-
-
-[[bin]]
-name = "deploy"
-path="src/contract_deploy.rs"

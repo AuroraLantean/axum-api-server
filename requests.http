@@ -229,6 +229,14 @@ DELETE http://localhost:3000/tasks/6?is_soft=true
 ### get_task_by_id
 GET http://localhost:3000/tasks/6
 
+### eth_transfer_token
+POST http://localhost:3000/eth_transfer_token
+content-type: application/json
+
+{
+  "to_address": "0x1234abcd"
+}
+
 ### run_thread
 POST http://localhost:3000/run_thread
 content-type: application/json

@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 use super::AppState;
-use crate::blockchain::simple_transactions::*;
+use crate::blockchain::{contract_deploy::compile_deploy_contract, simple_transactions::*};
 use crate::{
     entities::{
         tasks::{self, Entity as Tasks},
@@ -634,6 +634,23 @@ pub async fn eth_transfer_token(
     dbg!(&json);
 
     let txn_result = ethereum_simple_txn().await.map_err(|_e| "err".to_owned())?;
+    let out = 1000;
+    Ok(Json(RespBlockchain {
+        number: Some(out),
+        address: None,
+        error: None,
+    }))
+}
+pub async fn eth_deploy_contract(
+    State(_db_conn): State<DatabaseConnection>,
+    Json(json): Json<ReqBlockchain>,
+) -> Result<Json<RespBlockchain>, String> {
+    println!("eth_transfer_token");
+    dbg!(&json);
+
+    let txn_result = compile_deploy_contract()
+        .await
+        .map_err(|_e| "err".to_owned())?;
     let out = 1000;
     Ok(Json(RespBlockchain {
         number: Some(out),
