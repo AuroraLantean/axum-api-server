@@ -18,7 +18,9 @@ use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 use super::AppState;
-use crate::blockchain::{contract_deploy::compile_deploy_contract, simple_transactions::*};
+use crate::blockchain::{
+    contract_deploy::*, simple_txn_live::ethereum_live_txn, simple_txn_local::*,
+};
 use crate::{
     entities::{
         tasks::{self, Entity as Tasks},
@@ -87,11 +89,11 @@ pub async fn query_headers(TypedHeader(user_agent): TypedHeader<UserAgent>) -> S
 pub struct SecurityLevel(pub String);
 //add "pub" inside OR "cannot initialize a tuple struct which contains private field"
 
-pub async fn get_custom_middleware(Extension(security_level): Extension<SecurityLevel>) -> String {
+pub async fn _get_custom_middleware(Extension(security_level): Extension<SecurityLevel>) -> String {
     security_level.0
 }
 //https://docs.rs/axum/latest/axum/middleware/index.html#writing-middleware
-pub async fn set_custom_middleware<B>(
+pub async fn _set_custom_middleware<B>(
     mut request: Request<B>,
     next: Next<B>,
 ) -> Result<Response, StatusCode> {
@@ -612,28 +614,14 @@ pub struct ReqBlockchain {
     pub addr1: Option<String>,
     pub addr2: Option<String>,
 }
-pub async fn eth_get_token_balance(
-    State(_db_conn): State<DatabaseConnection>,
-    Json(json): Json<ReqBlockchain>,
-) -> Result<Json<RespBlockchain>, String> {
-    println!("eth_get_token_balance");
-    dbg!(&json);
-
-    let out = 1000;
-    Ok(Json(RespBlockchain {
-        number: Some(out),
-        address: None,
-        error: None,
-    }))
-}
-pub async fn eth_transfer_token(
+pub async fn eth_local_txn(
     State(_db_conn): State<DatabaseConnection>,
     Json(json): Json<ReqBlockchain>,
 ) -> Result<Json<RespBlockchain>, String> {
     println!("eth_transfer_token");
     dbg!(&json);
 
-    let txn_result = ethereum_simple_txn().await.map_err(|_e| "err".to_owned())?;
+    let _txn_result = ethereum_local_txn().await.map_err(|_e| "err".to_owned())?;
     let out = 1000;
     Ok(Json(RespBlockchain {
         number: Some(out),
@@ -648,9 +636,24 @@ pub async fn eth_deploy_contract(
     println!("eth_transfer_token");
     dbg!(&json);
 
-    let txn_result = compile_deploy_contract()
+    let _txn_result = compile_deploy_contract()
         .await
         .map_err(|_e| "err".to_owned())?;
+    let out = 1000;
+    Ok(Json(RespBlockchain {
+        number: Some(out),
+        address: None,
+        error: None,
+    }))
+}
+pub async fn eth_live_txn(
+    State(_db_conn): State<DatabaseConnection>,
+    Json(json): Json<ReqBlockchain>,
+) -> Result<Json<RespBlockchain>, String> {
+    println!("eth_transfer_token");
+    dbg!(&json);
+
+    let _txn_result = ethereum_live_txn().await.map_err(|_e| "err".to_owned())?;
     let out = 1000;
     Ok(Json(RespBlockchain {
         number: Some(out),

@@ -25,8 +25,10 @@ chrono = { version = "0.4.23", features = ["serde"] }
 bcrypt = "0.14.0"
 jsonwebtoken = "8.2.0"
 clap = { version = "4.1.4", features = ["derive"] }
-ethers = { version = "1.0.2", features = ["legacy"] }
+ethers = { version = "1.0.2", features = ["legacy", "rustls"] }
 ethers-solc = { version = "1.0.2", features = ["full"] }
 ethers-providers = "1.0.2"
 eyre = "0.6.8"
 hex = "0.4.3"
+reqwest = { version = "0.11.14", default-features = false }
+serde_json = "1.0.93"

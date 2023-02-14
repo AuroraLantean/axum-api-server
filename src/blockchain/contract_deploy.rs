@@ -13,6 +13,7 @@ use std::time::Duration;
 pub type SignerDeployedContract<T> = Contract<SignerMiddleware<Provider<T>, LocalWallet>>;
 
 pub async fn compile_deploy_contract() -> Result<()> {
+    println!("------------------== compile_deploy_contract");
     // Spawn a ganache instance
     let mnemonic = dotenvy::var("MNEMONIC").expect("MNEMONIC not found");
     println!("MNEMONIC is valid: {}", &mnemonic);
@@ -33,10 +34,12 @@ pub async fn compile_deploy_contract() -> Result<()> {
     println!("Ganache started with chain_id {chain_id}");
 
     // Compile solidity project
+    // this root_str MUST be a "folderName/" next to src folder! AND it is included in the "contract_path" below!
     let project = compile_contracts("contracts/").await?;
-
+    println!("compile_contracts succeeded");
     // Print compiled project information
     print_project(project.clone()).await?;
+    println!("print_project succeeded");
 
     let balance = provider.get_balance(wallet.address(), None).await?;
 
@@ -47,67 +50,79 @@ pub async fn compile_deploy_contract() -> Result<()> {
     );
 
     let contract_name = "BUSDImplementation";
-    let contract_path = "contracts/BUSDImplementation.sol";
+    let contract_path = "BUSDImplementation.sol";
     // Find the contract to be deployed
     let contract = project
         .find(contract_path, contract_name)
         .context("Contract not found")?
         .clone();
-
+    println!("contract is found");
     // make a transaction to include code for deploying the contract
     // Get ABI and contract byte, these are required for contract deployment
-    let (abi, bytecode, _) = contract.into_parts();
-    let abi = abi.context("Missing abi from contract")?;
+    let (abi_option, bytecode, _) = contract.into_parts();
+    println!("abi, bytecode parsed succeeded");
+    let contract = abi_option.context("Missing abi from contract")?;
+    println!("contract extracted");
     let bytecode = bytecode.context("Missing bytecode from contract")?;
 
     // Make signer client
     let signer = wallet.with_chain_id(chain_id);
+    println!("signer found from chain_id");
     let client = SignerMiddleware::new(provider.clone(), signer).into();
-
+    println!("client found");
     // Deploy contract
-    let factory = ContractFactory::new(abi.clone(), bytecode, client);
+    let factory = ContractFactory::new(contract.clone(), bytecode, client);
+    println!("factory found");
     // Our contract don't need any constructor arguments, so we can use an empty tuple
     let mut deployer = factory.deploy(())?;
+    println!("deployer found from factory");
 
     let block = provider
         .clone()
         .get_block(BlockNumber::Latest)
         .await?
         .context("Failed to get latest block")?;
-
+    println!("block found");
     // Set a reasonable gas price to prevent our contract from being rejected by EVM
     let gas_price = block
         .next_block_base_fee()
         .context("Failed to get the next block base fee")?;
+    println!("gas_price found");
     deployer.tx.set_gas_price::<U256>(gas_price);
-
+    println!("set_gas_price() succeeded");
     // We can also manually set the gas limit
     // let gas_limit = block.gas_limit;
     // deployer.tx.set_gas::<U256>(gas_limit);
 
     // Send deployment transaction
     let contract = deployer.clone().legacy().send().await?;
-
+    println!("deployment succeeded");
     println!(
-        "BUSDImpl contract address {}",
+        "{} contract address: {}",
+        contract_name,
         contract.address().encode_hex::<String>()
     );
 
     Ok(())
 }
 
-pub async fn compile_contracts(root: &str) -> Result<ProjectCompileOutput<ConfigurableArtifacts>> {
+pub async fn compile_contracts(
+    root_str: &str,
+) -> Result<ProjectCompileOutput<ConfigurableArtifacts>> {
+    println!("--------------== compile_contracts");
     // Make path from string and check if the path exists
-    let root = PathBuf::from(root);
+    let root = PathBuf::from(root_str);
     if !root.exists() {
+        println!("root does not exist. {}", root_str);
         return Err(eyre!("Project root {root:?} does not exists!"));
     }
-
+    println!("root building succeeded");
     // Configure `root` as our project root
     let paths = ProjectPathsConfig::builder()
         .root(&root)
         .sources(&root)
         .build()?;
+    println!("paths building succeeded");
 
     // Make a solc ProjectBuilder instance for compilation
     let project = Project::builder()
@@ -115,23 +130,28 @@ pub async fn compile_contracts(root: &str) -> Result<ProjectCompileOutput<Config
         .set_auto_detect(true) // auto detect solc version from solidity source code
         .no_artifacts()
         .build()?;
+    println!("project building succeeded");
 
     // Install Solc !!!
     // Compile project
     let output = project.compile()?;
+    println!("project.compile() succeeded");
 
     // Check for compilation errors
     if output.has_compiler_errors() {
+        println!("output failed");
         Err(eyre!(
             "Compiling solidity project failed: {:?}",
             output.output().errors
         ))
     } else {
+        println!("output succeeded");
         Ok(output.clone())
     }
 }
 
 pub async fn print_project(project: ProjectCompileOutput<ConfigurableArtifacts>) -> Result<()> {
+    println!("--------------== print_project");
     let artifacts = project.into_artifacts();
     for (id, artifact) in artifacts {
         let name = id.name;

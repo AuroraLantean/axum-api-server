@@ -7,7 +7,7 @@ use ethers::{
 use eyre::{ContextCompat, Result};
 use hex::ToHex;
 
-pub async fn ethereum_simple_txn() -> Result<()> {
+pub async fn ethereum_local_txn() -> Result<()> {
     // Spawn a ganache instance ... MNEMONIC has to be enclosed in double quotes for .env to work!!!
     let mnemonic = dotenvy::var("MNEMONIC").expect("MNEMONIC not found");
     println!("MNEMONIC is valid: {}", &mnemonic);
