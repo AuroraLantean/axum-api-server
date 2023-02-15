@@ -18,9 +18,7 @@ use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 use super::AppState;
-use crate::blockchain::{
-    contract_deploy::*, simple_txn_live::ethereum_live_txn, simple_txn_local::*,
-};
+use crate::blockchain::{contract_deploy::*, simple_txn_live::*, simple_txn_local::*};
 use crate::{
     entities::{
         tasks::{self, Entity as Tasks},
@@ -603,9 +601,22 @@ pub async fn delete_task(
 }
 #[derive(Serialize, Debug)]
 pub struct RespBlockchain {
-    pub number: Option<u64>,
+    pub num1: Option<String>,
+    pub num2: Option<String>,
     pub address: Option<String>,
+    pub txn_hash: Option<String>,
     pub error: Option<String>,
+}
+impl Default for RespBlockchain {
+    fn default() -> Self {
+        Self {
+            num1: None,
+            num2: None,
+            address: None,
+            txn_hash: None,
+            error: None,
+        }
+    }
 }
 #[derive(Deserialize, Debug)]
 pub struct ReqBlockchain {
@@ -618,47 +629,57 @@ pub async fn eth_local_txn(
     State(_db_conn): State<DatabaseConnection>,
     Json(json): Json<ReqBlockchain>,
 ) -> Result<Json<RespBlockchain>, String> {
-    println!("eth_transfer_token");
+    println!("eth_local_txn");
     dbg!(&json);
 
     let _txn_result = ethereum_local_txn().await.map_err(|_e| "err".to_owned())?;
-    let out = 1000;
     Ok(Json(RespBlockchain {
-        number: Some(out),
-        address: None,
-        error: None,
+        ..Default::default()
     }))
 }
 pub async fn eth_deploy_contract(
     State(_db_conn): State<DatabaseConnection>,
     Json(json): Json<ReqBlockchain>,
 ) -> Result<Json<RespBlockchain>, String> {
-    println!("eth_transfer_token");
+    println!("eth_deploy_contract");
     dbg!(&json);
 
     let _txn_result = compile_deploy_contract()
         .await
         .map_err(|_e| "err".to_owned())?;
-    let out = 1000;
     Ok(Json(RespBlockchain {
-        number: Some(out),
-        address: None,
-        error: None,
+        ..Default::default()
     }))
 }
-pub async fn eth_live_txn(
+pub async fn eth_live_read(
     State(_db_conn): State<DatabaseConnection>,
     Json(json): Json<ReqBlockchain>,
 ) -> Result<Json<RespBlockchain>, String> {
-    println!("eth_transfer_token");
+    println!("eth_live_read");
     dbg!(&json);
 
-    let _txn_result = ethereum_live_txn().await.map_err(|_e| "err".to_owned())?;
-    let out = 1000;
+    let (bal0, bal1) = ethereum_live_read().await.map_err(|e| e.to_string())?;
     Ok(Json(RespBlockchain {
-        number: Some(out),
-        address: None,
-        error: None,
+        num1: Some(bal0),
+        num2: Some(bal1),
+        ..Default::default()
+    }))
+}
+pub async fn eth_live_write(
+    State(_db_conn): State<DatabaseConnection>,
+    Json(json): Json<ReqBlockchain>,
+) -> Result<Json<RespBlockchain>, String> {
+    println!("eth_live_write");
+    dbg!(&json);
+    let amount = json.num1.ok_or_else(|| "num1 missing".to_owned())?;
+
+    let (txn_hash, balance1) = ethereum_live_write(amount)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(Json(RespBlockchain {
+        num1: Some(balance1),
+        txn_hash: Some(txn_hash),
+        ..Default::default()
     }))
 }
 pub async fn run_thread(
@@ -685,10 +706,8 @@ pub async fn run_thread(
         .map_err(|_e| "handle.join() failed".to_owned())??;
 
     println!("main thread continue after waiting for the thread");
-    let out = rx.recv().map_err(|_e| "rx.recv() failed".to_owned())?;
+    let _out = rx.recv().map_err(|_e| "rx.recv() failed".to_owned())?;
     Ok(Json(RespBlockchain {
-        number: Some(out),
-        address: None,
-        error: None,
+        ..Default::default()
     }))
 }

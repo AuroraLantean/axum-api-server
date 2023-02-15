@@ -245,12 +245,22 @@ content-type: application/json
   "to_address": "0x1234abcd"
 }
 
-### eth_live_txn
-POST http://localhost:3000/eth_live_txn
+### eth_live_read
+POST http://localhost:3000/eth_live_read
 content-type: application/json
 
 {
-  "to_address": "0x1234abcd"
+  "addr1": "0xabcdef1",
+  "addr2": "0xabcdef2"
+}
+### eth_live_write
+POST http://localhost:3000/eth_live_write
+content-type: application/json
+
+{
+  "num1": 3,
+  "addr1": "0xabcdef1",
+  "addr2": "0xabcdef2"
 }
 
 ### run_thread
