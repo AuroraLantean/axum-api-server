@@ -30,5 +30,7 @@ ethers-solc = { version = "1.0.2", features = ["full"] }
 ethers-providers = "1.0.2"
 eyre = "0.6.8"
 hex = "0.4.3"
-reqwest = { version = "0.11.14", default-features = false }
+reqwest = { version = "0.11.14", features = ["json"] }
 serde_json = "1.0.93"
+tempfile = "3.3.0"
+error-chain = "0.12.4"

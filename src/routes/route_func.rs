@@ -26,7 +26,7 @@ use crate::{
     },
     utils::{hash_password, make_jwt, verify_jwt, verify_password, AppError},
 };
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 use std::{sync::mpsc, thread};
 /*use sqlx::MySqlPool;
 // basic handler that responds with a static string
@@ -620,8 +620,8 @@ impl Default for RespBlockchain {
 }
 #[derive(Deserialize, Debug)]
 pub struct ReqBlockchain {
-    pub num1: Option<u64>,
-    pub num2: Option<u64>,
+    pub num1: Option<f64>,
+    pub num2: Option<f64>,
     pub addr1: Option<String>,
     pub addr2: Option<String>,
 }
@@ -682,6 +682,24 @@ pub async fn eth_live_write(
         ..Default::default()
     }))
 }
+pub async fn eth_send_ether(
+    State(_db_conn): State<DatabaseConnection>,
+    Json(json): Json<ReqBlockchain>,
+) -> Result<Json<RespBlockchain>, String> {
+    println!("eth_send_ether");
+    dbg!(&json);
+    let amount = json.num1.ok_or_else(|| "num1 missing".to_owned())?;
+    let addr1 = json.addr1.ok_or_else(|| "addr1 missing".to_owned())?;
+
+    let (txn_hash, balance1) = ethereum_send_ether(addr1, amount)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(Json(RespBlockchain {
+        num1: Some(balance1),
+        txn_hash: Some(txn_hash),
+        ..Default::default()
+    }))
+}
 pub async fn run_thread(
     State(_db_conn): State<DatabaseConnection>,
     Json(json): Json<ReqBlockchain>,
@@ -708,6 +726,127 @@ pub async fn run_thread(
     println!("main thread continue after waiting for the thread");
     let _out = rx.recv().map_err(|_e| "rx.recv() failed".to_owned())?;
     Ok(Json(RespBlockchain {
+        ..Default::default()
+    }))
+}
+
+use reqwest::header::USER_AGENT;
+#[derive(Deserialize, Debug)]
+pub struct Item {
+    pub login: String,
+    pub id: u32,
+}
+
+//curl localhost:3000/make_get_request
+pub async fn make_get_request(
+    State(_db_conn): State<DatabaseConnection>,
+    //Path(task_id): Path<i32>,
+) -> Result<Json<RespBlockchain>, String> {
+    let request_url = format!(
+        "https://api.github.com/repos/{owner}/{repo}/stargazers",
+        owner = "rust-lang-nursery",
+        repo = "rust-cookbook"
+    );
+    println!("request_url: {}", request_url);
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&request_url)
+        .header(USER_AGENT, "demo")
+        .send()
+        .await
+        .map_err(|_| "err@send()".to_owned())?;
+
+    let users: Vec<Item> = response.json().await.map_err(|_| "err@json()".to_owned())?;
+    println!("users: {:?}", users);
+    /*let resp = reqwest::get("https://httpbin.org/ip")
+            .await?
+            .json::<HashMap<String, String>>()
+            .await?;
+        println!("{:#?}", resp);
+    */
+    Ok(Json(RespBlockchain {
+        ..Default::default()
+    }))
+}
+
+//curl localhost:3000/make_get_request
+pub async fn make_post_request(
+    State(_db_conn): State<DatabaseConnection>,
+    //Json(json): Json<ReqBlockchain>,
+) -> Result<Json<RespBlockchain>, String> {
+    // This will POST a body of `{"lang":"rust","body":"json"}`
+    let mut map = HashMap::new();
+    map.insert("lang", "rust");
+    map.insert("body", "json");
+
+    let client = reqwest::Client::new();
+    let res = client
+        .post("http://httpbin.org/post")
+        .json(&map)
+        .send()
+        .await
+        .map_err(|_| "err@send()".to_owned())?;
+    println!("res: {:?}", res);
+    Ok(Json(RespBlockchain {
+        ..Default::default()
+    }))
+}
+
+use std::fs::File;
+use std::io::copy;
+use tempfile::Builder;
+/*use error_chain::error_chain;
+error_chain! {
+  foreign_links {
+      Io(std::io::Error);
+      HttpRequest(reqwest::Error);
+  }
+}*/
+
+pub async fn download_file(
+    State(_db_conn): State<DatabaseConnection>,
+    //Json(json): Json<ReqBlockchain>,
+) -> Result<Json<RespBlockchain>, String> {
+    let tmp_dir = Builder::new()
+        .prefix("example")
+        .tempdir()
+        .map_err(|_| "err@tempdir()".to_owned())?;
+    let target = "https://www.rust-lang.org/logos/rust-logo-512x512.png";
+    println!("download_file 1");
+    let response = reqwest::get(target)
+        .await
+        .map_err(|_| "err@reqwest.get()".to_owned())?;
+    println!("download_file 2. response:{:?}", &response);
+
+    let mut dest = {
+        let fname = response
+            .url()
+            .path_segments()
+            .and_then(|segments| segments.last())
+            .and_then(|name| if name.is_empty() { None } else { Some(name) })
+            .unwrap_or("tmp.bin");
+        println!("file to download: '{}'", fname);
+
+        let fname = tmp_dir.path().join(fname);
+        println!("will be located at: '{:?}'", fname);
+        File::create(fname)
+    }
+    .map_err(|_| "err@File::create()".to_owned())?;
+    println!("download_file 3. dest:{:?}", &dest);
+
+    let content = response
+        .text()
+        .await
+        .map_err(|_| "err@response.text()".to_owned())?;
+    println!("download_file 4");
+    //println!("download_file 4. content:{}", &content);
+
+    let out = copy(&mut content.as_bytes(), &mut dest).map_err(|_| "err@copy())".to_owned())?;
+    println!("download_file 5. out:{}", out);
+
+    Ok(Json(RespBlockchain {
+        num1: Some(out.to_string()),
         ..Default::default()
     }))
 }

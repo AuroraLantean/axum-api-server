@@ -1,3 +1,4 @@
+use core::fmt;
 use ethers::{
     prelude::*,
     types::{BlockNumber, H256},
@@ -169,7 +170,7 @@ pub async fn get_write_provider(
     });
     Ok(provider)
 }
-pub async fn ethereum_live_write(amount_in_eth: u64) -> Result<(String, String)> {
+pub async fn ethereum_live_write(amount_in_eth: f64) -> Result<(String, String)> {
     println!("ethereum_live_write 0");
     let env = get_env_parameters().expect("env error");
     let provider = get_write_provider(&env.rpc_url, &env.pvkey0)
@@ -197,25 +198,30 @@ pub async fn ethereum_live_write(amount_in_eth: u64) -> Result<(String, String)>
     println!("{receipt:?}");
     let receipt_txn_hash = receipt.transaction_hash;
     println!("receipt_txn_hash: {}", receipt_txn_hash);
+    let txn_hash = NewH256(receipt_txn_hash);
+    println!("txn_hash: {}", txn_hash);
+
     let tx = provider.get_transaction(receipt_txn_hash).await?;
-    println!("tx confirmed");
-
-    println!("tx: {}\n", serde_json::to_string(&tx)?);
+    println!("tx confirmed: {}\n", serde_json::to_string(&tx)?);
     println!("receipt: {}", serde_json::to_string(&receipt)?);
-
-    let tx_hash = if let Some(txn) = tx {
-        txn.hash.to_string()
-    } else {
-        "hash_not_found".to_owned() //H256([0; 32])
-    };
-    println!("tx.hash: {}\n", &tx_hash);
 
     let balance0 = erc20token.balance_of(addr0).call().await?;
     println!("balance0: ({balance0})");
     let balance1 = erc20token.balance_of(addr1).call().await?;
     println!("balance1: ({balance1})");
     let bal1 = format_units(balance1, "ether").unwrap();
-    Ok((tx_hash, bal1))
+    Ok((txn_hash.to_string(), bal1))
+}
+
+struct NewH256(H256);
+impl fmt::Display for NewH256 {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "0x")?;
+        for i in &self.0[..] {
+            write!(f, "{:02x}", i)?;
+        }
+        Ok(())
+    }
 }
 
 pub fn get_read_provider(rpc_url: &str) -> Result<Arc<Provider<Http>>, String> {
@@ -276,33 +282,64 @@ pub async fn ethereum_live_read() -> Result<(String, String)> {
 }
 
 pub async fn ethereum_send_ether(
-    client: &Arc<Provider<Http>>,
-    to_addr: H160,
-    amount_in_eth: u64,
-    //amount: U256,
-) -> Result<()> {
+    _to_addr_str: String,
+    amount_in_eth: f64,
+) -> Result<(String, String)> {
     println!("----------== ethereum_send_ether");
+    println!("ethereum_send_ether 0");
+    let env = get_env_parameters().expect("env error");
+    let provider = get_write_provider(&env.rpc_url, &env.pvkey0)
+        .await
+        .expect("provider error");
+    println!("ethereum_send_ether 1");
+
+    //let accounts = provider.get_accounts().await?;
+    let from = env.addr0.parse::<Address>()?;
+    let to_addr = env.addr1.parse::<Address>()?;
+    //let to_addr = to_addr_str.parse::<Address>()?;
+
+    let amount_in_u256 = parse_ether(amount_in_eth)?;
+    println!("ethereum_send_ether 2: inputs are valid");
+    // craft the tx
     let tx = TransactionRequest::new()
         .to(to_addr)
-        .value(parse_ether(amount_in_eth)?);
-    println!("tx made");
-    // send it!
-    let pending_tx = client.send_transaction(tx, None).await?;
-    println!("pending_tx made & tx sent");
+        .value(amount_in_u256)
+        .from(from);
+    println!("ethereum_send_ether 3: tx made");
+
+    let balance_before = provider.get_balance(from, None).await?;
+    let nonce1 = provider.get_transaction_count(from, None).await?;
+    dbg!(balance_before, nonce1);
+
+    // broadcast it via the eth_sendTransaction API
+    let pending_tx = provider.send_transaction(tx, None).await?.await?;
+    println!("ethereum_send_ether 4: tx pending");
+    println!("{}", serde_json::to_string(&pending_tx)?);
 
     //pending_tx.confirmations(3).await?;
-    let receipt = pending_tx
-        .await?
-        .ok_or_else(|| eyre::format_err!("tx dropped from mempool"))?;
-    println!("receipt made");
+    let receipt = pending_tx.ok_or_else(|| eyre::format_err!("tx dropped from mempool"))?;
+    println!("ethereum_send_ether 5: receipt made");
+    println!("{receipt:?}");
     let receipt_txn_hash = receipt.transaction_hash;
     println!("receipt_txn_hash: {}", receipt_txn_hash);
+    let txn_hash = NewH256(receipt_txn_hash);
+    println!("txn_hash: {}", txn_hash);
 
-    let tx = client.get_transaction(receipt_txn_hash).await?;
-    println!("tx hash confirmed");
+    let tx = provider.get_transaction(receipt_txn_hash).await?;
+    println!("ethereum_send_ether 6: tx confirmed");
     println!("Sent tx: {}\n", serde_json::to_string(&tx)?);
     println!("Tx receipt: {}", serde_json::to_string(&receipt)?);
-    Ok(())
+
+    let nonce2 = provider.get_transaction_count(from, None).await?;
+    println!("check below: nonce1 < nonce2");
+    dbg!(nonce1, nonce2);
+
+    let balance_after = provider.get_balance(from, None).await?;
+    println!("check below: balance_after < balance_before");
+    dbg!(balance_before, balance_after);
+
+    let bal1 = format_units(balance_after, "ether").unwrap();
+    Ok((txn_hash.to_string(), bal1))
 }
 /*
    let base: U256 = U256::from(10).pow(ETH_DECIMALS.into());

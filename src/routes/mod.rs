@@ -64,7 +64,11 @@ pub async fn create_routes(mode: String, db_conn: DatabaseConnection) -> Router 
         .route("/eth_deploy_contract", post(eth_deploy_contract))
         .route("/eth_live_read", post(eth_live_read))
         .route("/eth_live_write", post(eth_live_write))
+        .route("/eth_send_ether", post(eth_send_ether))
         .route("/run_thread", post(run_thread))
+        .route("/make_post_request", post(make_post_request))
+        .route("/make_get_request", get(make_get_request))
+        .route("/download_file", post(download_file))
         .layer(cors)
         .with_state(app_state)
 }

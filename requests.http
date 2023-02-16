@@ -258,7 +258,16 @@ POST http://localhost:3000/eth_live_write
 content-type: application/json
 
 {
-  "num1": 3,
+  "num1": 3.5,
+  "addr1": "0xabcdef1",
+  "addr2": "0xabcdef2"
+}
+### eth_send_ether
+POST http://localhost:3000/eth_send_ether
+content-type: application/json
+
+{
+  "num1": 0.0001,
   "addr1": "0xabcdef1",
   "addr2": "0xabcdef2"
 }
@@ -271,5 +280,22 @@ content-type: application/json
   "to_address": "0x1234abcd"
 }
 
+### make_get_request
+GET http://localhost:3000/make_get_request
+
+### make_post_request
+POST http://localhost:3000/make_post_request
+content-type: application/json
+
+{
+  "to_address": "0x1234abcd"
+}
+### download_file
+POST http://localhost:3000/download_file
+content-type: application/json
+
+{
+  "to_address": "0x1234abcd"
+}
 ### Get Google
 GET www.google.com 
