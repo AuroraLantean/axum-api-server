@@ -30,6 +30,7 @@ DB_POSTGRES_URL=protocol://username:password@host/database
 [Note] MNEMONIC MUST include double quotation marks or the MNEMONIC cannot be completely read properly
 
 ```
+DATABASE_URL_EXAMPLE=protocol://username:password@host/database
 DB_MYSQL_URL=
 DB_POSTGRES_URL=
 JWT_SECRET=
@@ -37,6 +38,17 @@ HASHCOST=
 ETHERSCAN_KEY=
 MNEMONIC=
 INFURA_KEY=
+NETWORK=sepolia
+MORALIS_KEY=
+PRIVATE_KEY0=
+ETH_ADDR0=
+ETH_ADDR1=
+ETH_ADDR2=0x
+ETH_ADDR3=0x
+ETH_ERC20TOKEN=
+ETH_ERC20TOKEN_OWNER=
+CHAINLINK_AGGR_V3_BTCUSD=
+CHAINLINK_AGGR_V3_ETHUSD=
 ```
 
 ## Start Database

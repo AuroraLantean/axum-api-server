@@ -700,6 +700,18 @@ pub async fn eth_send_ether(
         ..Default::default()
     }))
 }
+pub async fn chainlink_prices(
+    State(_db_conn): State<DatabaseConnection>,
+    //Json(json): Json<ReqBlockchain>,
+) -> Result<Json<RespBlockchain>, String> {
+    println!("get_ether_price");
+    let (btc_price, eth_price) = get_chainlink_prices().await.map_err(|e| e.to_string())?;
+    Ok(Json(RespBlockchain {
+        num1: Some(btc_price),
+        num2: Some(eth_price),
+        ..Default::default()
+    }))
+}
 pub async fn run_thread(
     State(_db_conn): State<DatabaseConnection>,
     Json(json): Json<ReqBlockchain>,
@@ -736,7 +748,6 @@ pub struct Item {
     pub login: String,
     pub id: u32,
 }
-
 //curl localhost:3000/make_get_request
 pub async fn make_get_request(
     State(_db_conn): State<DatabaseConnection>,

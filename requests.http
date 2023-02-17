@@ -297,5 +297,9 @@ content-type: application/json
 {
   "to_address": "0x1234abcd"
 }
+
+### chainlink_prices
+GET http://localhost:3000/chainlink_prices
+
 ### Get Google
 GET www.google.com 

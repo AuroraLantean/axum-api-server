@@ -7,7 +7,11 @@ use ethers::{
 use ethers_providers::{Authorization, Http};
 use eyre::Result;
 use reqwest::header::{HeaderMap, HeaderValue};
-use std::sync::Arc;
+use std::{
+    error::Error,
+    ops::{Div, Mul},
+    sync::Arc,
+};
 
 async fn _create_instance(rpc_url: &str) -> eyre::Result<()> {
     // An Http provider can be created from an http(s) URI.
@@ -69,7 +73,7 @@ async fn _share_providers_across_tasks(rpc_url: &str) -> eyre::Result<()> {
 }
 
 // Generate the type-safe contract bindings by providing the ABI definition in human readable format
-abigen!(ERC20Token, "ERC20Token.json");
+abigen!(ERC20Token, "src/blockchain/ERC20Token.json");
 /**
    r#"[
      function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)
@@ -81,11 +85,13 @@ pub struct Env {
     pub network: String,
     pub rpc_url: String,
     pub pvkey0: String,
-    pub addr0: String,
-    pub addr1: String,
-    pub addr2: String,
-    pub addr3: String,
-    pub erc20_token_addr: String,
+    pub addr0: H160,
+    pub addr1: H160,
+    pub addr2: H160,
+    pub addr3: H160,
+    pub erc20_token_addr: H160,
+    pub chainlink_aggr_v3_btcusd: H160,
+    pub chainlink_aggr_v3_ethusd: H160,
 }
 pub fn get_env_parameters() -> Result<Env, String> {
     // MNEMONIC has to be enclosed in double quotes for .env to work!!!
@@ -107,24 +113,60 @@ pub fn get_env_parameters() -> Result<Env, String> {
     .join("");
     println!("rpc_url: {}", &rpc_url);
 
-    let addr0 = dotenvy::var("ETH_ADDR0").map_err(|_e| "ETH_ADDR0 not found".to_owned())?;
-    println!("ETH_ADDR0 is valid: {}", &addr0);
-
     let pvkey0 = dotenvy::var("PRIVATE_KEY0").map_err(|_e| "PRIVATE_KEY0 not found".to_owned())?;
     println!("PRIVATE_KEY0 is valid: {}", &pvkey0);
 
+    let addr0 = dotenvy::var("ETH_ADDR0").map_err(|_e| "ETH_ADDR0 not found".to_owned())?;
+    println!("ETH_ADDR0 is valid: {}", &addr0);
+    let addr0 = addr0
+        .parse::<Address>()
+        .map_err(|_e| "addr0 parse error".to_owned())?;
+    //Address::from_str("0x...").expect();
+
     let addr1 = dotenvy::var("ETH_ADDR1").map_err(|_e| "ETH_ADDR1 not found".to_owned())?;
     println!("ETH_ADDR1 is valid: {}", &addr1);
+    let addr1 = addr1
+        .parse::<Address>()
+        .map_err(|_e| "addr1 parse error".to_owned())?;
 
     let addr2 = dotenvy::var("ETH_ADDR2").map_err(|_e| "ETH_ADDR2 not found".to_owned())?;
     println!("ETH_ADDR2 is valid: {}", &addr2);
+    let addr2 = addr2
+        .parse::<Address>()
+        .map_err(|_e| "addr2 parse error".to_owned())?;
 
     let addr3 = dotenvy::var("ETH_ADDR3").map_err(|_e| "ETH_ADDR3 not found".to_owned())?;
     println!("ETH_ADDR3 is valid: {}", &addr3);
+    let addr3 = addr3
+        .parse::<Address>()
+        .map_err(|_e| "addr3 parse error".to_owned())?;
 
     let erc20_token_addr =
         dotenvy::var("ETH_ERC20TOKEN").map_err(|_e| "ETH_ERC20TOKEN not found".to_owned())?;
     println!("ETH_ERC20TOKEN is valid: {}", &erc20_token_addr);
+    let erc20_token_addr = erc20_token_addr
+        .parse::<Address>()
+        .map_err(|_e| "erc20_token_addr parse error".to_owned())?;
+
+    let chainlink_aggr_v3_btcusd = dotenvy::var("CHAINLINK_AGGR_V3_BTCUSD")
+        .map_err(|_e| "CHAINLINK_AGGR_V3_BTCUSD not found".to_owned())?;
+    println!(
+        "CHAINLINK_AGGR_V3_BTCUSD is valid: {}",
+        &chainlink_aggr_v3_btcusd
+    );
+    let chainlink_aggr_v3_btcusd = chainlink_aggr_v3_btcusd
+        .parse::<Address>()
+        .map_err(|_e| "chainlink_aggr_v3_btcusd parse error".to_owned())?;
+
+    let chainlink_aggr_v3_ethusd = dotenvy::var("CHAINLINK_AGGR_V3_ETHUSD")
+        .map_err(|_e| "CHAINLINK_AGGR_V3_ETHUSD not found".to_owned())?;
+    println!(
+        "CHAINLINK_AGGR_V3_ETHUSD is valid: {}",
+        &chainlink_aggr_v3_ethusd
+    );
+    let chainlink_aggr_v3_ethusd = chainlink_aggr_v3_ethusd
+        .parse::<Address>()
+        .map_err(|_e| "chainlink_aggr_v3_ethusd parse error".to_owned())?;
 
     Ok(Env {
         mnemonic,
@@ -136,6 +178,8 @@ pub fn get_env_parameters() -> Result<Env, String> {
         addr2,
         addr3,
         erc20_token_addr,
+        chainlink_aggr_v3_btcusd,
+        chainlink_aggr_v3_ethusd,
     })
 }
 pub async fn get_write_provider(
@@ -178,25 +222,24 @@ pub async fn ethereum_live_write(amount_in_eth: f64) -> Result<(String, String)>
         .expect("provider error");
     println!("ethereum_live_write 1");
 
-    let address = env.erc20_token_addr.parse::<Address>()?;
-    let erc20token = ERC20Token::new(address, Arc::clone(&provider));
+    let erc20token = ERC20Token::new(env.erc20_token_addr, Arc::clone(&provider));
     println!("ethereum_live_write 2");
-    let addr0 = env.addr0.parse::<Address>()?;
-    let addr1 = env.addr1.parse::<Address>()?;
-    let balance0 = erc20token.balance_of(addr0).call().await?;
+    let balance0 = erc20token.balance_of(env.addr0).call().await?;
     println!("balance0: ({balance0})");
-    let balance1 = erc20token.balance_of(addr1).call().await?;
+    let balance1 = erc20token.balance_of(env.addr1).call().await?;
     println!("balance1: ({balance1})");
     //let amount_in_eth = 17u64;
     let receipt = erc20token
-        .transfer(addr1, parse_ether(amount_in_eth)?)
+        .transfer(env.addr1, parse_ether(amount_in_eth)?)
         .send()
         .await?
         .await?
         .expect("no receipt found");
     println!("receipt made");
     println!("{receipt:?}");
+
     let receipt_txn_hash = receipt.transaction_hash;
+    //let hash_value: H256 = H256::from_str(tx_hash_str)?;
     println!("receipt_txn_hash: {}", receipt_txn_hash);
     let txn_hash = NewH256(receipt_txn_hash);
     println!("txn_hash: {}", txn_hash);
@@ -205,9 +248,9 @@ pub async fn ethereum_live_write(amount_in_eth: f64) -> Result<(String, String)>
     println!("tx confirmed: {}\n", serde_json::to_string(&tx)?);
     println!("receipt: {}", serde_json::to_string(&receipt)?);
 
-    let balance0 = erc20token.balance_of(addr0).call().await?;
+    let balance0 = erc20token.balance_of(env.addr0).call().await?;
     println!("balance0: ({balance0})");
-    let balance1 = erc20token.balance_of(addr1).call().await?;
+    let balance1 = erc20token.balance_of(env.addr1).call().await?;
     println!("balance1: ({balance1})");
     let bal1 = format_units(balance1, "ether").unwrap();
     Ok((txn_hash.to_string(), bal1))
@@ -253,20 +296,17 @@ pub async fn ethereum_live_read() -> Result<(String, String)> {
         .unwrap();
     println!("last_block: {last_block}");
 
-    let address = env.erc20_token_addr.parse::<Address>()?;
-    let erc20token = ERC20Token::new(address, Arc::clone(&provider));
+    let erc20token = ERC20Token::new(env.erc20_token_addr, Arc::clone(&provider));
     println!("ethereum_live_read 3");
 
-    let ctrt_name = erc20token.name().call().await?;
+    let ctrt_name: String = erc20token.name().call().await?;
     println!("ctrt_name: ({ctrt_name})");
-    let total_supply = erc20token.total_supply().call().await?;
+    let total_supply: U256 = erc20token.total_supply().call().await?;
     println!("total_supply: ({total_supply})");
 
-    let addr0 = env.addr0.parse::<Address>()?;
-    let addr1 = env.addr1.parse::<Address>()?;
-    let balance0 = erc20token.balance_of(addr0).call().await?;
+    let balance0: U256 = erc20token.balance_of(env.addr0).call().await?;
     println!("balance0: ({balance0})");
-    let balance1 = erc20token.balance_of(addr1).call().await?;
+    let balance1: U256 = erc20token.balance_of(env.addr1).call().await?;
     println!("balance1: ({balance1})");
     let bal0 = format_units(balance0, "ether").unwrap();
     let bal1 = format_units(balance1, "ether").unwrap();
@@ -294,8 +334,8 @@ pub async fn ethereum_send_ether(
     println!("ethereum_send_ether 1");
 
     //let accounts = provider.get_accounts().await?;
-    let from = env.addr0.parse::<Address>()?;
-    let to_addr = env.addr1.parse::<Address>()?;
+    let from = env.addr0;
+    let to_addr = env.addr1;
     //let to_addr = to_addr_str.parse::<Address>()?;
 
     let amount_in_u256 = parse_ether(amount_in_eth)?;
@@ -341,9 +381,92 @@ pub async fn ethereum_send_ether(
     let bal1 = format_units(balance_after, "ether").unwrap();
     Ok((txn_hash.to_string(), bal1))
 }
-/*
-   let base: U256 = U256::from(10).pow(ETH_DECIMALS.into());
-   let value: U256 = amount.mul(price_usd).div(base);
-   let f: String = format_units(value, USD_PRICE_DECIMALS)?;
-   Ok(f.parse::<f64>()?)
-*/
+
+//https://github.com/smartcontractkit/chainlink/blob/master/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol
+abigen!(ChainlinkAggrV3, "src/blockchain/chainlinkAggrV3.json");
+const ETH_DECIMALS: u32 = 18;
+const USD_PRICE_DECIMALS: u32 = 8;
+pub async fn get_chainlink_prices() -> Result<(String, String), String> {
+    println!("----------== get_chainlink_prices");
+    let env = get_env_parameters().expect("env error");
+    let provider = get_read_provider(&env.rpc_url).expect("provider error");
+    println!("get_chainlink_prices 0");
+    let gas_in_wei: U256 = provider
+        .get_gas_price()
+        .await
+        .map_err(|_e| "get_gas_price error".to_owned())?;
+    println!("gas_in_wei:{}", gas_in_wei);
+
+    let gas_in_gwei: f64 = format_units(gas_in_wei, "gwei")
+        .map_err(|_e| "error1".to_owned())?
+        .parse::<f64>()
+        .map_err(|_e| "error2".to_owned())?;
+
+    let btc_price = get_chainlink(&provider, env.chainlink_aggr_v3_btcusd, "btc").await?;
+    println!("btc_price: {}", btc_price);
+    let btc_price_str = format_units(btc_price, USD_PRICE_DECIMALS).unwrap();
+
+    let eth_price = get_chainlink(&provider, env.chainlink_aggr_v3_ethusd, "eth").await?;
+    println!("eth_price: {}", eth_price);
+    let eth_price_str = format_units(eth_price, USD_PRICE_DECIMALS).unwrap();
+
+    let gas_in_usd: f64 =
+        usd_value(gas_in_wei, eth_price).map_err(|_e| "usd_value error".to_owned())?;
+    println!(
+        r#"
+Gas price
+---------------
+{gas_in_gwei:>10.2} gwei
+{gas_in_usd:>10.8} usd
+"#
+    );
+
+    Ok((btc_price_str, eth_price_str))
+}
+
+/// `amount_in_wei`: 18 decimals
+/// `eth_in_usd`: 8 decimals
+fn usd_value(amount_in_wei: U256, eth_in_usd: U256) -> Result<f64, Box<dyn Error>> {
+    let base: U256 = U256::from(10).pow(ETH_DECIMALS.into());
+    let value: U256 = amount_in_wei.mul(eth_in_usd).div(base);
+    let f: String = format_units(value, USD_PRICE_DECIMALS)?;
+    Ok(f.parse::<f64>()?)
+}
+
+pub async fn get_chainlink(
+    provider: &Arc<Provider<Http>>,
+    oracle_addr: H160,
+    pair: &str,
+) -> Result<U256, String> {
+    println!("----------== get_chainlink");
+    //https://docs.chain.link/data-feeds/price-feeds/addresses/
+    let chainlink_aggrv3 = ChainlinkAggrV3::new(oracle_addr, Arc::clone(provider));
+
+    /*let decimal: u8 = chainlink_aggrv3
+        .decimals()
+        .call()
+        .await
+        .map_err(|_e| "decimals error".to_owned())?;
+    println!("{} decimal: {}", pair, decimal);*/
+    //https://docs.chain.link/data-feeds/price-feeds/api-reference/
+    let (round_id, price, _started_at, _updated_at, _answerd_in_round): (
+        u128,
+        I256,
+        U256,
+        U256,
+        u128,
+    ) = chainlink_aggrv3
+        .latest_round_data()
+        .call()
+        .await
+        .map_err(|_e| "latest_round_data error".to_owned())?;
+    println!("{} price: {}", pair, price);
+    //let usd_per_eth: U256 = U256::from(price.as_u128());
+    let (sign, price_u256) = price.into_sign_and_abs();
+    if let Sign::Negative = sign {
+        return Err("sign is negative".to_owned());
+    }
+    let round_id_u256 = U256::from(round_id);
+    println!("{} round_id: {}", pair, round_id_u256);
+    Ok(price_u256)
+}
