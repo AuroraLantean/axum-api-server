@@ -10,8 +10,11 @@ use reqwest::header::{HeaderMap, HeaderValue};
 use std::{
     error::Error,
     ops::{Div, Mul},
+    str::FromStr,
     sync::Arc,
 };
+
+use crate::blockchain::wallet::{self,  get_address_from_mnemonic, make_new_mnemonic};
 
 async fn _create_instance(rpc_url: &str) -> eyre::Result<()> {
     // An Http provider can be created from an http(s) URI.
@@ -469,4 +472,25 @@ pub async fn get_chainlink(
     let round_id_u256 = U256::from(round_id);
     println!("{} round_id: {}", pair, round_id_u256);
     Ok(price_u256)
+}
+
+pub fn send_raw_txn(from: &str, to: &str, gas: &'static str, data: &str) -> Result<()> {
+    println!("----------== send_raw_txn");
+    println!("send_raw_txn 0");
+    let _tx = TransactionRequest::new()
+        .from(Address::from_str(from).unwrap())
+        .to(Address::from_str(to).unwrap())
+        .gas(gas)
+        .data(Bytes::from_str(data).unwrap());
+
+    Ok(())
+}
+
+pub fn make_keypair1() -> Result<()> {
+    println!("----------== make_keypair1");
+    let keypair = wallet::make_keypair();
+    println!("keypair: {:?}", keypair);
+    make_new_mnemonic()?;
+    get_address_from_mnemonic()?;
+    Ok(())
 }

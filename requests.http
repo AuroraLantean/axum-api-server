@@ -301,5 +301,8 @@ content-type: application/json
 ### chainlink_prices
 GET http://localhost:3000/chainlink_prices
 
+### make_keypair2
+GET http://localhost:3000/make_keypair2
+
 ### Get Google
 GET www.google.com 

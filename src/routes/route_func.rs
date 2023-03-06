@@ -712,6 +712,16 @@ pub async fn chainlink_prices(
         ..Default::default()
     }))
 }
+pub async fn make_keypair2(
+    State(_db_conn): State<DatabaseConnection>,
+    //Json(json): Json<ReqBlockchain>,
+) -> Result<Json<RespBlockchain>, String> {
+    println!("make_keypair2");
+    let _out = make_keypair1().map_err(|e| e.to_string())?;
+    Ok(Json(RespBlockchain {
+        ..Default::default()
+    }))
+}
 pub async fn run_thread(
     State(_db_conn): State<DatabaseConnection>,
     Json(json): Json<ReqBlockchain>,
